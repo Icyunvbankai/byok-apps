@@ -103,6 +103,22 @@
 
       <p style="margin-top:16px"><button class="btn danger-ghost" id="clear-key-btn">Remove saved key</button></p>
     </div>
+
+    <div class="card" style="margin-top:16px">
+      <h3>Property data — RentCast <span class="hint" style="font-weight:400;color:var(--muted-fg)">(automatic listing pulls)</span></h3>
+      <p class="tip">A free RentCast key lets DealLens pull price, beds/baths, sqft, year built, last sale, days on market, value &amp; rent estimates, and photos straight from a pasted listing link — no Ziggy middleman. <a href="https://app.rentcast.io/" target="_blank" rel="noopener">Get a free key</a>.</p>
+      <p class="tip">Free tier: 50 lookups/month &middot; each listing pull uses ~4 &middot; the key stays in this browser only.</p>
+      <div class="field">
+        <label for="rc-key">RentCast API key</label>
+        <input type="password" id="rc-key" placeholder="Paste your RentCast key" autocomplete="off" spellcheck="false">
+      </div>
+      <p>
+        <button class="btn" id="rc-save-btn">Save key</button>
+        <button class="btn secondary" id="rc-clear-btn" style="margin-left:8px">Remove key</button>
+      </p>
+      <p class="error" id="rc-error" role="alert"></p>
+      <p class="success" id="rc-success" role="status"></p>
+    </div>
   </section>
 
   <!-- ============ NEW ANALYSIS ============ -->
@@ -145,7 +161,7 @@
           <div class="field"><label for="f-name">Label</label><input id="f-name" placeholder="Duplex near downtown"></div>
           <div class="field"><label for="f-addr">Street address <span class="hint">(unlocks parcel / map / listing links)</span></label><input id="f-addr" placeholder="123 Main St, Fort Pierce, FL 34950" autocomplete="off"></div>
           <div class="field"><label for="f-price">Purchase price ($)</label><input id="f-price" type="number" min="1" required placeholder="200000"></div>
-          <div class="field" data-modes="buy"><label for="f-rent">Monthly rent ($)</label><input id="f-rent" type="number" min="0" placeholder="1800"></div>
+          <div class="field" data-modes="buy"><label for="f-rent">Monthly rent ($)</label><input id="f-rent" type="number" min="0" placeholder="1800"><p class="tip" id="f-rent-rc-hint" hidden></p></div>
           <div class="field"><label for="f-beds">Beds / baths <span class="hint">(optional)</span></label><input id="f-beds" placeholder="3 / 2"></div>
         </div>
       </div>
