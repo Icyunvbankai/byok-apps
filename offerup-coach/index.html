@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OfferUp Coach — Walk into every interview over-prepared</title>
+<meta name="description" content="BYOK interview prep for tech and finance candidates. Resume rewrites, mock interviews with scored debriefs, offer analysis. Your API key, your compute.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header no-print">
+  <div class="header-inner">
+    <a class="logo" href="#/" data-nav="landing">OfferUp<span>Coach</span></a>
+    <nav class="nav" aria-label="Main">
+      <button data-nav="dashboard">Dashboard</button>
+      <button data-nav="resume">Resume</button>
+      <button data-nav="interview-setup">Mock Interview</button>
+      <button data-nav="offer">Offer</button>
+      <button data-nav="history">History</button>
+      <button data-nav="setup">API Key</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ============ LANDING ============ -->
+  <section class="view" id="view-landing" aria-label="Welcome">
+    <div class="hero">
+      <span class="kicker">BYOK &middot; your key, your compute</span>
+      <h1>Your $200k interview,<br>rehearsed.</h1>
+      <p class="lead">Resume bullets rewritten in STAR format. Mock interviews with a hiring-manager-grade AI and a scored debrief. Offer letters broken down to the dollar — then negotiated. You bring your own AI key, so sessions cost you cents.</p>
+      <p style="margin-top:12px">
+        <button class="btn" data-nav="interview-setup">Start a mock interview</button>
+        <button class="btn secondary" data-nav="setup" style="margin-left:8px">Set up API key</button>
+      </p>
+    </div>
+
+    <div class="steps">
+      <div class="step"><span class="n">1</span><h3>Fix your bullets</h3><p>Paste weak resume lines. Get STAR-structured rewrites with an impact score — no more "responsible for".</p></div>
+      <div class="step"><span class="n">2</span><h3>Rehearse the room</h3><p>Multi-turn mock interviews for SWE, PM, and finance roles. Follow-up questions when you're vague. Scored debrief after.</p></div>
+      <div class="step"><span class="n">3</span><h3>Negotiate the offer</h3><p>Total comp computed to the dollar in code. Then word-for-word negotiation scripts in your voice.</p></div>
+    </div>
+
+    <div class="sample-strip" aria-label="Sample output">
+      <div class="stat"><div class="v">8.4<span style="font-size:1rem">/10</span></div><div class="l">avg debrief score</div></div>
+      <div class="stat"><div class="v">$19<span style="font-size:1rem">/mo</span></div><div class="l">vs $200+/hr coaches</div></div>
+      <div class="stat"><div class="v">~$0.30</div><div class="l">per mock on your key</div></div>
+      <div class="stat"><div class="v">4</div><div class="l">rubric dimensions</div></div>
+    </div>
+
+    <div class="card">
+      <h3>How BYOK pricing works</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem">OfferUp Coach runs on <strong style="color:var(--fg)">your</strong> OpenAI, xAI, or Anthropic key — pasted once, stored only in this browser, never on our servers. A full mock interview costs roughly <strong style="color:var(--fg)">$0.10–0.50</strong> of your own API credit. We charge for the coaching engine, not the tokens.</p>
+      <p style="margin-top:12px"><button class="btn secondary" data-nav="pricing">See plans</button></p>
+    </div>
+  </section>
+
+  <!-- ============ SETUP ============ -->
+  <section class="view" id="view-setup" aria-label="API key setup">
+    <h1>Bring your own key</h1>
+    <p class="lead" style="margin-bottom:20px">Pick a provider, paste a key. It stays in this browser's local storage — never sent to our servers. Interview quality matters here, so flagship models are the default; flip on budget mode for cheaper rewrites.</p>
+
+    <div class="notice">New to API keys? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI keys</a> &middot; <a href="https://console.x.ai" target="_blank" rel="noopener">xAI console</a> &middot; <a href="https://console.anthropic.com" target="_blank" rel="noopener">Anthropic console</a>. Set a small spend limit (e.g. $5) on your provider account.</div>
+    <div class="notice warn" id="anthropic-note" hidden>Heads up: Anthropic's API sometimes blocks direct browser calls (CORS). If the key test fails below, OpenAI or xAI will work fine — or run Anthropic through a tiny proxy.</div>
+
+    <div class="card">
+      <div class="provider-cards" role="radiogroup" aria-label="Provider">
+        <label class="provider" data-provider="openai">
+          <input type="radio" name="provider" value="openai" checked>
+          <strong>OpenAI</strong><small>gpt-4o default &middot; ~$0.30/mock</small>
+        </label>
+        <label class="provider" data-provider="xai">
+          <input type="radio" name="provider" value="xai">
+          <strong>xAI</strong><small>grok-3 default &middot; ~$0.30/mock</small>
+        </label>
+        <label class="provider" data-provider="anthropic">
+          <input type="radio" name="provider" value="anthropic">
+          <strong>Anthropic</strong><small>claude-sonnet-4-5 default &middot; ~$0.40/mock</small>
+        </label>
+      </div>
+
+      <div class="field">
+        <label class="check"><input type="checkbox" id="budget-mode"> Budget mode — use mini-class models (cheaper, best for resume rewrites)</label>
+      </div>
+
+      <div class="field">
+        <label for="api-key">API key</label>
+        <input type="password" id="api-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+        <p class="tip">Stored only in this browser (localStorage). Clear it anytime below.</p>
+      </div>
+
+      <div class="field">
+        <label for="model">Model <span class="hint">(editable — use what you like)</span></label>
+        <input type="text" id="model" value="gpt-4o" spellcheck="false">
+        <p class="tip" id="model-hint"></p>
+      </div>
+
+      <p>
+        <button class="btn" id="test-key-btn">Test key</button>
+        <button class="btn secondary" id="save-key-btn" style="margin-left:8px">Save key</button>
+      </p>
+      <p class="error" id="key-error" role="alert"></p>
+      <p class="success" id="key-success" role="status"></p>
+
+      <p style="margin-top:16px"><button class="btn danger-ghost" id="clear-key-btn">Remove saved key</button></p>
+    </div>
+  </section>
+
+  <!-- ============ DASHBOARD ============ -->
+  <section class="view" id="view-dashboard" aria-label="Dashboard">
+    <h1>Dashboard</h1>
+    <p class="lead" style="margin-bottom:20px">Your readiness, at a glance.</p>
+    <div class="grid-metrics" id="dash-metrics"></div>
+    <h2>Recent sessions</h2>
+    <div id="dash-recent"></div>
+    <h2>Quick actions</h2>
+    <p style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" data-nav="interview-setup">New mock interview</button>
+      <button class="btn secondary" data-nav="resume">Fix a resume bullet</button>
+      <button class="btn secondary" data-nav="offer">Analyze an offer</button>
+    </p>
+  </section>
+
+  <!-- ============ RESUME ============ -->
+  <section class="view" id="view-resume" aria-label="Resume studio">
+    <h1>Resume studio</h1>
+    <p class="lead" style="margin-bottom:20px">Paste one weak bullet. Get a STAR-structured rewrite with an impact score — computed in code, not vibes.</p>
+    <div class="notice warn" id="resume-no-key" hidden>No API key saved — the rewrite needs one. <a href="#/setup" data-nav="setup">Set it up</a> (30 seconds).</div>
+    <div class="card">
+      <div class="field">
+        <label for="resume-bullet">Your bullet (one line)</label>
+        <textarea id="resume-bullet" rows="3" placeholder="Responsible for backend services and helping the team ship features..."></textarea>
+      </div>
+      <div class="field">
+        <label for="resume-context">Role context <span class="hint">(optional — sharpens the rewrite)</span></label>
+        <input id="resume-context" placeholder="Senior Backend Engineer, fintech">
+      </div>
+      <p><button class="btn" id="rewrite-btn">Rewrite it</button></p>
+      <p class="error" id="resume-error" role="alert"></p>
+    </div>
+    <div id="resume-results"></div>
+  </section>
+
+  <!-- ============ INTERVIEW SETUP ============ -->
+  <section class="view" id="view-interview-setup" aria-label="Set up mock interview">
+    <h1>Mock interview</h1>
+    <p class="lead" style="margin-bottom:20px">Pick your lane. The interviewer asks, follows up when you're vague, and scores you after.</p>
+    <div class="notice warn" id="iset-no-key" hidden>No API key saved — interviews need one. <a href="#/setup" data-nav="setup">Set it up</a> (30 seconds).</div>
+    <div class="card">
+      <div class="grid2">
+        <div class="field">
+          <label for="iset-role">Role</label>
+          <select id="iset-role">
+            <option value="swe">Software Engineer</option>
+            <option value="pm">Product Manager</option>
+            <option value="fin">Finance Analyst</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="iset-level">Level</label>
+          <select id="iset-level">
+            <option value="junior">Junior / Intern</option>
+            <option value="mid" selected>Mid-level</option>
+            <option value="senior">Senior</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="iset-count">Questions</label>
+          <select id="iset-count">
+            <option value="3">3 (quick)</option>
+            <option value="5" selected>5 (standard)</option>
+            <option value="8">8 (deep)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="iset-company">Target company <span class="hint">(optional)</span></label>
+          <input id="iset-company" placeholder="e.g. Stripe">
+        </div>
+      </div>
+      <p class="tip">Behavioral track in this MVP — the highest-leverage interview type. Technical, case, and finance-specific tracks coming.</p>
+      <p><button class="btn block" id="iset-start">Start interview</button></p>
+      <p class="error" id="iset-error" role="alert"></p>
+    </div>
+  </section>
+
+  <!-- ============ INTERVIEW ============ -->
+  <section class="view" id="view-interview" aria-label="Mock interview in progress">
+    <div class="interview-topbar no-print">
+      <div>
+        <strong id="interview-title">Mock interview</strong>
+        <div class="interview-meta"><span id="interview-qcount">Q 0/5</span> &middot; <span id="interview-timer">00:00</span> &middot; <span id="interview-cost">≈ $0.00</span></div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn secondary sm" id="hint-btn">Hint</button>
+        <button class="btn danger-ghost sm" id="wrapup-btn">Wrap up</button>
+      </div>
+    </div>
+    <div class="chat-log" id="chat-log" aria-live="polite"></div>
+    <form class="chat-input no-print" id="chat-form">
+      <input id="chat-input" placeholder="Type your answer…" autocomplete="off" aria-label="Your answer">
+      <button class="btn" type="submit" id="chat-send">Send</button>
+    </form>
+    <p class="error" id="interview-error" role="alert"></p>
+  </section>
+
+  <!-- ============ DEBRIEF ============ -->
+  <section class="view" id="view-debrief" aria-label="Interview debrief">
+    <div id="debrief-content"></div>
+    <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" data-nav="interview-setup">Run it again</button>
+      <button class="btn secondary" data-nav="history">History</button>
+      <button class="btn secondary" data-nav="dashboard">Dashboard</button>
+    </p>
+  </section>
+
+  <!-- ============ OFFER ============ -->
+  <section class="view" id="view-offer" aria-label="Offer analyzer">
+    <h1>Offer analyzer</h1>
+    <p class="lead" style="margin-bottom:20px">Enter the numbers — or paste the letter and let the AI pull them out for you to verify. All comp math runs in code.</p>
+    <div class="notice warn" id="offer-no-key" hidden>No API key saved — number extraction and negotiation scripts need one. <a href="#/setup" data-nav="setup">Set it up</a>. The comp table works without a key.</div>
+    <div class="card">
+      <div class="field">
+        <label for="offer-paste">Paste offer letter <span class="hint">(optional — AI extracts the numbers, you verify)</span></label>
+        <textarea id="offer-paste" rows="4" placeholder="Paste the offer email or letter here…"></textarea>
+      </div>
+      <p><button class="btn secondary" id="offer-extract-btn">Extract numbers from letter</button></p>
+      <p class="error" id="offer-error" role="alert"></p>
+      <div class="grid2" style="margin-top:16px">
+        <div class="field"><label for="of-base">Base salary ($/yr)</label><input id="of-base" type="number" min="0" placeholder="150000"></div>
+        <div class="field"><label for="of-bonus">Annual bonus ($/yr)</label><input id="of-bonus" type="number" min="0" placeholder="20000"></div>
+        <div class="field"><label for="of-equity">Equity grant, total value ($)</label><input id="of-equity" type="number" min="0" placeholder="100000"></div>
+        <div class="field"><label for="of-vestyears">Vesting (years)</label><input id="of-vestyears" type="number" min="1" max="10" value="4"></div>
+        <div class="field"><label for="of-signing">Signing bonus ($)</label><input id="of-signing" type="number" min="0" placeholder="0"></div>
+        <div class="field"><label for="of-stance">Negotiation stance</label>
+          <select id="of-stance"><option value="moderate" selected>Moderate</option><option value="aggressive">Aggressive</option><option value="conservative">Conservative</option></select>
+        </div>
+      </div>
+      <p><button class="btn block" id="of-analyze-btn">Analyze offer</button></p>
+    </div>
+    <div id="offer-results"></div>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section class="view" id="view-history" aria-label="History">
+    <h1>History</h1>
+    <p class="lead" style="margin-bottom:16px">Every session, scored. Watch the trend climb.</p>
+    <p class="no-print" style="margin-bottom:16px"><button class="btn gold" id="landed-btn">🎉 I landed the job</button></p>
+    <div id="history-list"></div>
+  </section>
+
+  <!-- ============ OFFBOARDING ============ -->
+  <section class="view" id="view-offboarding" aria-label="You landed it">
+    <h1>You landed it. 🎉</h1>
+    <p class="lead" style="margin-bottom:20px">That's the whole point. Pause your subscription below, tell us how it went (optional), and grab a gift link for a friend.</p>
+    <div id="offboarding-form-wrap">
+      <div class="card">
+        <div class="grid2">
+          <div class="field"><label for="off-name">Name <span class="hint">(optional)</span></label><input id="off-name" placeholder="Alex"></div>
+          <div class="field"><label for="off-company">Company <span class="hint">(optional)</span></label><input id="off-company" placeholder="Where'd you land?"></div>
+          <div class="field"><label for="off-role">Role landed</label><input id="off-role" placeholder="Senior SWE"></div>
+          <div class="field"><label for="off-comp">Total comp ($/yr) <span class="hint">(optional)</span></label><input id="off-comp" type="number" min="0" placeholder="210000"></div>
+        </div>
+        <div class="field"><label for="off-testimonial">Testimonial <span class="hint">(optional — powers our wall of wins)</span></label>
+          <textarea id="off-testimonial" rows="3" placeholder="OfferUp Coach got me…"></textarea></div>
+        <p><button class="btn block" id="off-submit">Pause my subscription</button></p>
+        <p class="tip">Billing pause isn't wired in this MVP build — this records your win locally. We'll email you before anything bills.</p>
+      </div>
+    </div>
+    <div id="offboarding-result"></div>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section class="view" id="view-pricing" aria-label="Pricing">
+    <h1>Pricing</h1>
+    <p class="lead" style="margin-bottom:20px">One negotiated extra $5k in base pays for 21 years. AI compute runs on your own key — cents per session.</p>
+    <div class="steps">
+      <div class="step"><h3>Monthly</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$19<span style="font-size:.9rem;color:var(--muted-fg)">/mo</span></p><p>Unlimited mocks, resume rewrites, offer analysis, history.</p></div>
+      <div class="step"><h3>Annual</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$150<span style="font-size:.9rem;color:var(--muted-fg)">/yr</span></p><p>Everything monthly. Two months free.</p></div>
+      <div class="step"><h3>7-day trial</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">Free</p><p>Full access. Your API key covers the pennies of compute.</p></div>
+    </div>
+    <div class="notice">Billing isn't wired in this MVP build — checkout arrives with launch. The app is fully usable now with your own key.</div>
+  </section>
+</main>
+
+<footer class="site no-print">
+  <p>OfferUp Coach is a coaching tool, not a hiring guarantee — and not tax, legal, or financial advice. Verify offer numbers against your actual letter. Your API key never leaves this browser.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
