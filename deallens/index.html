@@ -14,6 +14,7 @@
     <a class="logo" href="#/" data-nav="landing">Deal<span>Lens</span></a>
     <nav class="nav" aria-label="Main">
       <button data-nav="new">+ Analyze</button>
+      <button data-nav="watch">Deal Watch</button>
       <button data-nav="history">History</button>
       <button data-nav="setup">API Key</button>
     </nav>
@@ -254,6 +255,73 @@
     <h1>Side-by-side</h1>
     <div class="compare-table-wrap card"><div id="compare-content"></div></div>
     <p><button class="btn secondary" data-nav="history">Back to history</button></p>
+  </section>
+
+  <!-- ============ DEAL WATCH ============ -->
+  <section class="view" id="view-watch" aria-label="Deal Watch">
+    <h1>Deal Watch</h1>
+    <p class="lead" style="margin-bottom:20px">Set your criteria once. <strong style="color:var(--fg)">Ziggy runs the hunt on your schedule</strong> — he sweeps public listings, runs each one through the DealLens engine with your loan settings, and sends you the deals that clear your bar.</p>
+
+    <div class="card" id="watch-active-card" hidden>
+      <h3>Watch active</h3>
+      <div id="watch-summary"></div>
+      <p style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="watch-copy-btn">Copy settings</button>
+        <button class="btn secondary" id="watch-change-btn">Change settings</button>
+        <button class="btn danger-ghost" id="watch-deactivate-btn">Deactivate</button>
+      </p>
+      <p class="tip">Send the copied settings to Ziggy in chat and your hunt starts on that schedule.</p>
+      <p class="success" id="watch-copied" role="status"></p>
+    </div>
+
+    <div class="card" id="watch-form-card">
+      <h3>Your criteria</h3>
+      <form id="watch-form" novalidate>
+        <div class="grid2">
+          <div class="field"><label for="w-zips">ZIP codes <span class="hint">(comma-separated)</span></label><input id="w-zips" value="34950, 34982, 34947" autocomplete="off" spellcheck="false"></div>
+          <div class="field"><label for="w-proptype">Property type</label>
+            <select id="w-proptype">
+              <option value="multifamily" selected>2–4 unit multifamily</option>
+              <option value="duplex">Duplex</option>
+              <option value="triplex">Triplex</option>
+              <option value="fourplex">Fourplex</option>
+            </select>
+          </div>
+          <div class="field"><label for="w-maxprice">Max price ($)</label><input id="w-maxprice" type="number" min="1" step="1000" value="400000"></div>
+          <div class="field"><label for="w-strategy">Strategy</label>
+            <select id="w-strategy">
+              <option value="buy" selected>Buy &amp; Hold</option>
+              <option value="flip">Rehab Flip</option>
+              <option value="build">New Build</option>
+            </select>
+          </div>
+          <div class="field"><label for="w-loantype">Loan type</label>
+            <select id="w-loantype">
+              <option value="conventional" selected>Conventional</option>
+              <option value="fha">FHA</option>
+              <option value="va">VA</option>
+              <option value="dscr">DSCR investor loan</option>
+              <option value="seller">Seller financing</option>
+              <option value="cash">Cash (no loan)</option>
+            </select>
+          </div>
+          <div class="field"><label for="w-mincf">Minimum monthly cash flow ($)</label><input id="w-mincf" type="number" min="0" step="50" value="200"></div>
+        </div>
+        <h3 style="margin-top:4px">How often should Ziggy hunt?</h3>
+        <div class="radio-group" role="radiogroup" aria-label="Hunt interval">
+          <label class="radio-pill"><input type="radio" name="w-interval" value="daily"> Daily</label>
+          <label class="radio-pill"><input type="radio" name="w-interval" value="every3" checked> Every 3 days</label>
+          <label class="radio-pill"><input type="radio" name="w-interval" value="weekly"> Weekly</label>
+        </div>
+        <p><button type="submit" class="btn block">Activate Deal Watch</button></p>
+        <p class="error" id="watch-error" role="alert"></p>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Latest matches</h3>
+      <div id="watch-matches"><p class="tip">Loading…</p></div>
+    </div>
   </section>
 
   <!-- ============ PRICING ============ -->
