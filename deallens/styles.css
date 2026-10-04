@@ -1,5 +1,5 @@
 /* DealLens — dark fintech, mobile-first. Design tokens from ui-ux-pro-max. */
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Fira+Code:wght@500;600&display=swap');
 
 :root {
   --bg: #020617;
@@ -265,4 +265,83 @@ footer.site a { color: var(--accent); }
   .score-dial .num b { color: #000; }
   h1, h2, h3, p, td, th, .llm-body, .flag { color: #000; }
   .skeleton { display: none; }
+}
+
+/* ---------- DealLens v2 additions ---------- */
+:root { --mono: 'Fira Code', ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* Strategy tabs */
+.strat-tabs {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+  margin: 4px 0 20px;
+}
+.strat-tab {
+  background: var(--card); border: 1px solid var(--border); color: var(--muted-fg);
+  font: inherit; font-weight: 600; font-size: 0.95rem;
+  border-radius: 10px; padding: 12px 8px; min-height: 52px; cursor: pointer;
+  transition: border-color 150ms, color 150ms, background 150ms;
+}
+.strat-tab:hover { color: var(--fg); border-color: var(--accent); }
+.strat-tab.on { color: var(--accent); border-color: var(--accent); background: rgba(34, 197, 94, 0.08); }
+.strat-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.new-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+.new-head h1 { margin-bottom: 4px; }
+
+.badge {
+  display: inline-block; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--accent);
+  border: 1px solid var(--accent); border-radius: 999px; padding: 3px 10px; margin-right: 6px;
+  vertical-align: middle;
+}
+
+/* Data figures in monospace for dashboard scanability */
+.metric .v, table.breakdown td:last-child, table.compare td { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+/* Intel deep links */
+.intel-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 4px; }
+.intel-link {
+  display: inline-block; font-size: 0.85rem; font-weight: 600; color: var(--fg);
+  background: var(--muted); border: 1px solid var(--border); border-radius: 8px;
+  padding: 9px 12px; text-decoration: none; cursor: pointer; transition: border-color 150ms;
+}
+.intel-link:hover { border-color: var(--accent); color: var(--accent); }
+.map-wrap { margin: 12px 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.map-wrap iframe { width: 100%; height: 260px; border: 0; display: block; }
+
+/* Photos */
+.url-row { display: flex; gap: 8px; }
+.url-row input { flex: 1; }
+.url-row .btn { min-height: 48px; white-space: nowrap; }
+.photo-strip { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.photo-thumb { position: relative; width: 96px; height: 96px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); margin: 0; }
+.photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.photo-thumb button {
+  position: absolute; top: 4px; right: 4px; width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(2, 6, 23, 0.8); color: var(--danger); border: 1px solid var(--border);
+  font-size: 0.8rem; cursor: pointer; line-height: 1;
+}
+
+/* Full report */
+.report-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
+.report-brand { font-weight: 700; font-size: 1rem; color: var(--muted-fg); margin-bottom: 6px; }
+.report-brand span { color: var(--accent); }
+.report-head h1 { margin-bottom: 4px; }
+.report-score { text-align: center; flex-shrink: 0; }
+.report-score small { color: var(--muted-fg); font-size: 0.75rem; }
+.photo-report-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.photo-report { margin: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.photo-report img { width: 100%; height: 160px; object-fit: cover; display: block; }
+.photo-report figcaption { font-size: 0.75rem; color: var(--muted-fg); padding: 6px 8px; }
+
+/* ---------- Print (PDF export) additions ---------- */
+@media print {
+  .strat-tabs, .url-row, .photo-thumb button { display: none !important; }
+  .map-wrap iframe { height: 200px; }
+  .photo-report-grid { grid-template-columns: repeat(3, 1fr); }
+  .photo-report img { height: 140px; }
+  .intel-link { border-color: #999; color: #000; }
+  .badge { color: #15803d; border-color: #15803d; }
+  .report-brand, .report-brand span { color: #000; }
+  .metric .v, table.breakdown td:last-child { font-family: var(--mono); }
 }
