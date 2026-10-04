@@ -18,6 +18,51 @@ function loadRcKey() {
 }
 function saveRcKey(k) { localStorage.setItem(LS_RC, k); }
 function clearRcKey() { localStorage.removeItem(LS_RC); }
+/* RentCast usage: {month:"YYYY-MM", used:n} — counts HTTP requests actually
+   fired. Rolls over automatically when the calendar month changes. */
+const LS_RC_USAGE = 'deallens_rentcast_usage';
+const RC_FREE_LIMIT = 50;
+const RC_WARN_AT = 40;
+function rcMonthStr() { return new Date().toISOString().slice(0, 7); }
+function rcUsage() {
+  try {
+    const u = JSON.parse(localStorage.getItem(LS_RC_USAGE) || 'null');
+    if (u && u.month === rcMonthStr()) return { month: u.month, used: Math.max(0, +u.used || 0) };
+  } catch (e) { /* fall through to fresh */ }
+  return { month: rcMonthStr(), used: 0 };
+}
+function rcUsageAdd(n) {
+  const u = rcUsage();
+  u.used += n;
+  try { localStorage.setItem(LS_RC_USAGE, JSON.stringify(u)); } catch (e) { /* ignore */ }
+  return u;
+}
+
+/* RentCast response cache: deallens_rentcast_cache = { key: {at: ms, data} }.
+   Keys: "pull:<normalized address>" (TTL 7 days) and "search:<query JSON>"
+   (TTL 24h). Capped at 50 entries; oldest evicted first. */
+const LS_RC_CACHE = 'deallens_rentcast_cache';
+const RC_PULL_TTL_MS = 7 * 24 * 3600 * 1000;
+const RC_SEARCH_TTL_MS = 24 * 3600 * 1000;
+const RC_CACHE_MAX = 50;
+function rcCacheNorm(addr) { return String(addr || '').toLowerCase().replace(/\s+/g, ' ').trim(); }
+function rcCacheRead() {
+  try { const c = JSON.parse(localStorage.getItem(LS_RC_CACHE) || '{}'); return (c && typeof c === 'object') ? c : {}; }
+  catch (e) { return {}; }
+}
+function rcCacheWrite(c) { try { localStorage.setItem(LS_RC_CACHE, JSON.stringify(c)); } catch (e) { /* ignore */ } }
+function rcCacheGet(key, ttlMs) {
+  const c = rcCacheRead(), e = c[key];
+  if (!e || !e.at || (Date.now() - e.at) > ttlMs) return null;
+  return e.data;
+}
+function rcCacheSet(key, data) {
+  const c = rcCacheRead();
+  c[key] = { at: Date.now(), data };
+  const keys = Object.keys(c).sort((a, b) => (c[a].at || 0) - (c[b].at || 0));
+  while (keys.length > RC_CACHE_MAX) delete c[keys.shift()];
+  rcCacheWrite(c);
+}
 function loadDeals() {
   try { return JSON.parse(localStorage.getItem(LS_DEALS) || '[]'); } catch { return []; }
 }
@@ -669,7 +714,15 @@ async function runRentcastTests() {
   let calls = [];
   const okJson = data => ({ ok: true, status: 200, json: async () => data });
   const mockFetch = impl => { global.fetch = async (url, opts) => { calls.push({ url, opts }); return impl(url, opts); }; };
-  const setKey = k => { global.localStorage = { getItem: () => (k || ''), setItem() {}, removeItem() {} }; };
+  const setKey = k => { global.localStorage = {
+    getItem: id => (id === LS_RC ? (k || '') : (memStore[id] !== undefined ? memStore[id] : null)),
+    setItem: (id, v) => { memStore[id] = String(v); },
+    removeItem: id => { delete memStore[id]; },
+  }; };
+  const memStore = {};
+  const resetStore = () => { for (const k in memStore) delete memStore[k]; };
+  let confirmCalls = 0;
+  const stubConfirm = v => { global.confirm = () => { confirmCalls++; return v; }; };
   const ADDR = '1403 Avenue M, Fort Pierce, FL 34950';
 
   const FULL_PROP = [{ bedrooms: 3, bathrooms: 2, squareFootage: 1440, yearBuilt: 1972, lotSize: 7500, lastSaleDate: '2019-04-02T00:00:00', lastSalePrice: 150000, propertyType: 'Multi-Family' }];
@@ -758,10 +811,166 @@ async function runRentcastTests() {
     assert(f2.lastSaleDate === '2019-04-02' && f2.lastSalePrice === 150000 && f2.dom === 21, 'R8 intel fills');
     assert(f2.photos.length === 2, 'R8 photos');
 
-    console.log('RentCast tests: all passed (8 groups).');
+    // T9: intake flow — parse success must NOT auto-fire fetch; explicit tap does
+    const els = {};
+    const mkEl = () => ({ value: '', textContent: '', innerHTML: '', hidden: true, disabled: false,
+      dataset: {}, style: {},
+      classList: { toggle() {}, add() {}, remove() {}, contains: () => false },
+      _h: {},
+      addEventListener(ev, fn) { this._h[ev] = fn; },
+      appendChild() {}, querySelector() { return null; } });
+    global.document = {
+      getElementById: id => (els[id] || (els[id] = mkEl())),
+      createElement: () => mkEl(),
+      createTextNode: t => ({ text: t }),
+      querySelector: () => null,
+    };
+    setKey('test-key-123'); resetStore(); stubConfirm(true); confirmCalls = 0; calls = [];
+    mockFetch(fullMock);
+    wireListingIntake();
+    const gid = id => global.document.getElementById(id);
+    gid('f-listingurl').value = 'https://www.zillow.com/homedetails/1403-Avenue-M-Fort-Pierce-FL-34950/12345678_zpid/';
+    await gid('listingurl-pull')._h['click']();
+    assert(calls.length === 0, 'T9 no auto-run after parse, got ' + calls.length + ' fetches');
+    assert(gid('link-rcpull-row').hidden === false, 'T9 RC pull row visible after parse');
+    assert(gid('f-addr').value && /1403 Avenue M/i.test(gid('f-addr').value), 'T9 address filled, got ' + gid('f-addr').value);
+    await gid('listingurl-rcpull')._h['click']();
+    assert(calls.length === 4, 'T9 explicit tap fires 4, got ' + calls.length);
+    assert(confirmCalls === 1, 'T9 confirm shown once, got ' + confirmCalls);
+    assert(rcUsage().used === 4, 'T9 usage +4, got ' + rcUsage().used);
+    assert(/Enriched via RentCast/.test(gid('listingurl-msg').textContent), 'T9 enriched msg, got ' + gid('listingurl-msg').textContent);
+
+    // T10: no-key gate — zero requests, confirm never shown
+    setKey(''); resetStore(); stubConfirm(true); confirmCalls = 0; calls = [];
+    mockFetch(async () => okJson({}));
+    r = await gatedRentcastPull(ADDR);
+    assert(!r.ok && r.reason === 'no-key', 'T10 no-key reason, got ' + JSON.stringify(r));
+    assert(calls.length === 0, 'T10 zero fetches without key');
+    assert(confirmCalls === 0, 'T10 confirm not shown without key');
+
+    // T11: confirm cancel — zero requests, usage untouched
+    setKey('k'); resetStore(); stubConfirm(false); confirmCalls = 0; calls = [];
+    mockFetch(async () => okJson({}));
+    r = await gatedRentcastPull(ADDR);
+    assert(!r.ok && r.reason === 'cancelled', 'T11 cancelled reason, got ' + JSON.stringify(r));
+    assert(calls.length === 0, 'T11 zero fetches on cancel');
+    assert(confirmCalls === 1, 'T11 confirm shown once');
+    assert(rcUsage().used === 0, 'T11 usage untouched');
+
+    // T12: month rollover resets usage; next pull counts fresh
+    const _d = new Date(); _d.setDate(_d.getDate() - 40);
+    memStore[LS_RC_USAGE] = JSON.stringify({ month: _d.toISOString().slice(0, 7), used: 37 });
+    const ru = rcUsage();
+    assert(ru.used === 0 && ru.month === rcMonthStr(), 'T12 rollover resets, got ' + JSON.stringify(ru));
+    setKey('k'); stubConfirm(true); confirmCalls = 0; calls = [];
+    mockFetch(fullMock);
+    r = await gatedRentcastPull(ADDR);
+    assert(r.ok === true, 'T12 pull ok after rollover');
+    assert(rcUsage().used === 4, 'T12 usage 4 after rollover pull, got ' + rcUsage().used);
+
+    // T13: applyRentcastToDeal — pure deal-object mapping
+    const res13 = normalizeRentcast(FULL_PROP, FULL_LIST, FULL_AVMV, FULL_AVMD);
+    const deal13 = { price: 0, rent: 0, beds: '', intel: {}, photos: [], addr: ADDR };
+    applyRentcastToDeal(deal13, Object.assign({ ok: true }, res13));
+    assert(deal13.price === 200000, 'T13 price, got ' + deal13.price);
+    assert(deal13.rent === 1850, 'T13 rent, got ' + deal13.rent);
+    assert(deal13.beds === '3 / 2', 'T13 beds, got ' + deal13.beds);
+    assert(deal13.intel.sqft === 1440 && deal13.intel.yearBuilt === 1972 && deal13.intel.dom === 21, 'T13 intel sqft/year/dom');
+    assert(deal13.intel.lastSaleDate === '2019-04-02' && deal13.intel.lastSalePrice === 150000, 'T13 last sale');
+    assert(deal13.photos.length === 6 && deal13.photos[0].name === 'via RentCast', 'T13 photos');
+    assert(deal13.rcData && deal13.rcData.price === 200000, 'T13 rcData stored');
+
+    // T14: failed attempts still count (the API bills them)
+    setKey('k'); resetStore(); stubConfirm(true); confirmCalls = 0; calls = [];
+    mockFetch(async () => ({ ok: false, status: 500, json: async () => ({}) }));
+    r = await gatedRentcastPull(ADDR);
+    assert(!r.ok, 'T14 not ok on 500s');
+    assert(r.attempts === 4, 'T14 attempts counted on failure, got ' + r.attempts);
+    assert(calls.length === 4, 'T14 four fetches fired on failure');
+    assert(rcUsage().used === 4, 'T14 usage +4 on failure, got ' + rcUsage().used);
+
+    // T15: response cache — hit costs 0, expired refires, force bypasses, cap evicts
+    setKey('k'); resetStore(); delete memStore[LS_RC_CACHE];
+    stubConfirm(true); confirmCalls = 0; calls = [];
+    mockFetch(fullMock);
+    let r15 = await gatedRentcastPull(ADDR);
+    assert(r15.ok && !r15.cached && calls.length === 4, 'T15a first pull fires 4, got ' + calls.length);
+    assert(rcUsage().used === 4, 'T15a usage 4, got ' + rcUsage().used);
+    calls = []; confirmCalls = 0;
+    r15 = await gatedRentcastPull(ADDR);
+    assert(r15.ok && r15.cached === true && r15.attempts === 0, 'T15b cache hit flagged');
+    assert(calls.length === 0, 'T15b zero fetches on hit');
+    assert(confirmCalls === 0, 'T15b no confirm on hit');
+    assert(rcUsage().used === 4, 'T15b usage unchanged on hit, got ' + rcUsage().used);
+    assert(r15.price === 200000, 'T15b cached data intact');
+    calls = []; confirmCalls = 0;
+    r15 = await gatedRentcastPull(ADDR, { force: true });
+    assert(!r15.cached && calls.length === 4 && confirmCalls === 1, 'T15c force refires with confirm');
+    const _ck = rcCacheRead();
+    const _k15 = 'pull:' + rcCacheNorm(ADDR);
+    _ck[_k15].at = Date.now() - 8 * 24 * 3600 * 1000; // age past the 7-day TTL
+    rcCacheWrite(_ck);
+    calls = [];
+    r15 = await gatedRentcastPull(ADDR);
+    assert(!r15.cached && calls.length === 4, 'T15d expired entry refires');
+    for (let i = 0; i < 55; i++) rcCacheSet('pull:evict' + i, { price: i });
+    const _c2 = rcCacheRead(), _n2 = Object.keys(_c2).length;
+    assert(_n2 <= 50, 'T15e cache capped at 50, got ' + _n2);
+    assert(!('pull:evict0' in _c2), 'T15e oldest evicted first');
+
+    // T16: search param building
+    const SEARCH_LIST = [{ addressLine1: '1403 Avenue M', city: 'Fort Pierce', state: 'FL', zipCode: '34950', price: 200000, bedrooms: 3, bathrooms: 2, squareFootage: 1440, daysOnMarket: 21, photos: ['https://img/1.jpg'] }];
+    setKey('sk'); resetStore(); delete memStore[LS_RC_CACHE]; calls = [];
+    mockFetch(async url => (url.includes('/listings/sale?') ? okJson(SEARCH_LIST) : okJson({})));
+    let s16 = await rentcastSearch({ zipCode: '34950', propertyType: 'Multi-Family' });
+    assert(s16.ok && s16.listings.length === 1, 'T16a zip search ok');
+    let u16 = new URL(calls[0].url);
+    assert(u16.searchParams.get('zipCode') === '34950', 'T16a zipCode param');
+    assert(u16.searchParams.get('propertyType') === 'Multi-Family', 'T16a propertyType param');
+    assert(u16.searchParams.get('limit') === '20', 'T16a limit param');
+    assert(calls[0].opts.headers['X-Api-Key'] === 'sk', 'T16a X-Api-Key header');
+    assert(calls[0].url.startsWith(RC_BASE + '/listings/sale?'), 'T16a endpoint');
+    const l0 = s16.listings[0];
+    assert(l0.address === '1403 Avenue M, Fort Pierce, FL 34950', 'T16a addr, got ' + l0.address);
+    assert(l0.price === 200000 && l0.beds === 3 && l0.baths === 2 && l0.sqft === 1440 && l0.dom === 21, 'T16a fields');
+    assert(l0.photo === 'https://img/1.jpg', 'T16a first photo');
+    calls = [];
+    await rentcastSearch({ city: 'Fort Pierce', state: 'FL', propertyType: 'Single Family' });
+    u16 = new URL(calls[0].url);
+    assert(u16.searchParams.get('city') === 'Fort Pierce' && u16.searchParams.get('state') === 'FL', 'T16b city/state params');
+    calls = [];
+    await rentcastSearch({ latitude: 27.44, longitude: -80.33, radius: '25', propertyType: 'Condo' });
+    u16 = new URL(calls[0].url);
+    assert(u16.searchParams.get('latitude') === '27.44' && u16.searchParams.get('longitude') === '-80.33' && u16.searchParams.get('radius') === '25', 'T16c geo params, got ' + calls[0].url);
+    assert(JSON.stringify(parseLocationInput('34950')) === JSON.stringify({ zipCode: '34950' }), 'T16d zip parse');
+    const _cf = parseLocationInput('Fort Pierce, FL');
+    assert(_cf && _cf.city === 'Fort Pierce' && _cf.state === 'FL', 'T16e city parse');
+    assert(parseLocationInput('nonsense') === null && parseLocationInput('') === null, 'T16f bad parse null');
+
+    // T17: search usage — 1 on miss, 0 on cache hit
+    setKey('sk'); resetStore(); delete memStore[LS_RC_CACHE]; calls = [];
+    mockFetch(async url => (url.includes('/listings/sale?') ? okJson(SEARCH_LIST) : okJson({})));
+    await rentcastSearch({ zipCode: '34950', propertyType: 'Multi-Family' });
+    assert(rcUsage().used === 1, 'T17a search +1, got ' + rcUsage().used);
+    calls = [];
+    const s17 = await rentcastSearch({ zipCode: '34950', propertyType: 'Multi-Family' });
+    assert(s17.cached === true && calls.length === 0, 'T17b cached search fires nothing');
+    assert(rcUsage().used === 1, 'T17b usage unchanged on cached search');
+
+    // T18: Analyze wiring fills the intake address and navigates
+    global.location = { hash: '' };
+    fillIntakeAddress('1403 Avenue M, Fort Pierce, FL 34950');
+    assert(gid('f-addr').value === '1403 Avenue M, Fort Pierce, FL 34950', 'T18a intake addr filled');
+    assert(global.location.hash === '#/new', 'T18b navigates to new, got ' + global.location.hash);
+    assert(gid('link-rcpull-row').hidden === false, 'T18c RC pull row revealed');
+    delete global.location;
+
+    console.log('RentCast tests: all passed (18 groups).');
   } finally {
     global.fetch = realFetch;
     if (hadLS) global.localStorage = realLS; else delete global.localStorage;
+    delete global.document;
+    delete global.confirm;
   }
 }
 
@@ -927,6 +1136,7 @@ function syncRcSetupUI() {
   if (inp) inp.value = k || '';
   if (errEl) errEl.textContent = '';
   if (okEl) okEl.textContent = k ? 'RentCast key saved in this browser.' : '';
+  refreshRcUsageLabels();
 }
 
 function scoreClass(s) { return s >= 70 ? 'good' : s >= 45 ? 'mid' : 'bad'; }
@@ -1239,7 +1449,9 @@ function renderResults(id) {
   const body = strat === 'flip' ? renderFlipResults(deal, m, s, flags)
     : strat === 'build' ? renderBuildResults(deal, m, s, flags)
     : renderBuyResults(deal, m, s, flags);
-  box.innerHTML = `<h1 class="no-print">${esc(deal.name || 'Untitled deal')}</h1>` + stratBadge + body + intelCardHtml(deal);
+  box.innerHTML = `<h1 class="no-print">${esc(deal.name || 'Untitled deal')}</h1>` + stratBadge +
+    (strat === 'buy' ? rcEnrichCardHtml() : '') + body + intelCardHtml(deal);
+  if (strat === 'buy') wireRcEnrich(deal);
 }
 
 /* ---------- Full printable report ---------- */
@@ -1591,20 +1803,22 @@ async function rentcastLookup(address) {
   const key = loadRcKey();
   if (!key) return rcErr('no-key', 'No RentCast key saved.');
   const enc = encodeURIComponent(address);
+  let attempts = 0; // every HTTP request fired counts, even on failure
+  const fire = (path, k) => { attempts++; return rentcastFetch(path, k); };
   const [prop, listing, avmV, avmR] = await Promise.all([
-    rentcastFetch('/properties?address=' + enc + '&limit=1', key),
-    rentcastFetch('/listings/sale?address=' + enc + '&limit=1', key),
-    rentcastFetch('/avm/value?address=' + enc, key),
-    rentcastFetch('/avm/rent/long-term?address=' + enc, key),
+    fire('/properties?address=' + enc + '&limit=1', key),
+    fire('/listings/sale?address=' + enc + '&limit=1', key),
+    fire('/avm/value?address=' + enc, key),
+    fire('/avm/rent/long-term?address=' + enc, key),
   ]);
   const results = [prop, listing, avmV, avmR];
   const fatal = results.find(r => !r.ok && (r.reason === 'bad-key' || r.reason === 'rate-limit'));
-  if (fatal) return fatal;
-  if (!results.some(r => r.ok)) return results.find(r => !r.ok); // all failed: surface first error
+  if (fatal) { fatal.attempts = attempts; return fatal; }
+  if (!results.some(r => r.ok)) { const e = results.find(r => !r.ok); e.attempts = attempts; return e; }
   const data = normalizeRentcast(
     prop.ok ? prop.data : null, listing.ok ? listing.data : null,
     avmV.ok ? avmV.data : null, avmR.ok ? avmR.data : null);
-  const out = Object.assign({ ok: true }, data);
+  const out = Object.assign({ ok: true, attempts }, data);
   if (results.some(r => !r.ok)) out.partial = true;
   return out;
 }
@@ -1649,10 +1863,37 @@ function applyRentcastFills(fills) {
 /* ================= Listing link intake =================
    Paste a listing URL → address is parsed from the slug (no network calls;
    listing sites block CORS) → address field fills and intel deep-links render.
-   If a RentCast key is saved, the full pull runs automatically (~4 calls).
+   Full RentCast pulls are explicit opt-in only (~4 calls each): the intake
+   card and the Buy & Hold results view each show a gated pull button.
    "Ask Ziggy" copies a chat message; Ziggy replies with a pre-filled link. */
 let lastListingUrl = '';
 let lastRcData = null; // normalized RentCast payload for the current deal (or null)
+
+/* Fill the intake from an address alone (no listing URL needed): fills the
+   address field, renders intel deep-links + Street View, and reveals the
+   opt-in RentCast pull row + Ziggy fallback. Used by link intake and by
+   "Analyze" buttons on Find-deals search results. */
+function intakeFromAddress(addr) {
+  const addrEl = document.getElementById('f-addr');
+  if (addrEl) addrEl.value = addr;
+  const hint = document.getElementById('intel-links-hint');
+  if (hint) hint.textContent = 'Links unlocked for ' + addr + ' — they open in new tabs.';
+  const linksBox = document.getElementById('link-intel-links');
+  if (linksBox) {
+    const links = intelLinks(addr);
+    const sv = streetViewEmbed(addr);
+    linksBox.innerHTML = '<div class="intel-links">' + links.map(l =>
+      '<a class="intel-link" href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>').join('') + '</div>' +
+      (sv ? '<div class="map-wrap"><iframe title="Map of ' + esc(addr) + '" src="' + esc(sv) + '" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>' : '');
+  }
+  const msg = document.getElementById('listingurl-msg');
+  if (msg) msg.textContent = 'Address set. Pull full info via RentCast below, or fill in manually.';
+  const rcRow = document.getElementById('link-rcpull-row');
+  if (rcRow) rcRow.hidden = false;
+  refreshRcUsageLabels();
+  const ziggyRow = document.getElementById('link-ziggy-row');
+  if (ziggyRow) ziggyRow.hidden = false;
+}
 
 function wireListingIntake() {
   const btn = document.getElementById('listingurl-pull');
@@ -1668,36 +1909,32 @@ function wireListingIntake() {
       if (msg) msg.textContent = "Couldn't read that link — paste the address manually or try another listing site.";
       if (linksBox) linksBox.innerHTML = '';
       if (ziggyRow) ziggyRow.hidden = true;
+      const rcRow0 = document.getElementById('link-rcpull-row');
+      if (rcRow0) rcRow0.hidden = true;
       lastListingUrl = '';
       return;
     }
     lastListingUrl = url;
-    const addrEl = document.getElementById('f-addr');
-    if (addrEl) addrEl.value = parsed.address;
-    const hint = document.getElementById('intel-links-hint');
-    if (hint) hint.textContent = 'Links unlocked for ' + parsed.address + ' — they open in new tabs.';
-    if (linksBox) {
-      const links = intelLinks(parsed.address);
-      const sv = streetViewEmbed(parsed.address);
-      linksBox.innerHTML = '<div class="intel-links">' + links.map(l =>
-        '<a class="intel-link" href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>').join('') + '</div>' +
-        (sv ? '<div class="map-wrap"><iframe title="Map of ' + esc(parsed.address) + '" src="' + esc(sv) + '" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>' : '');
-    }
-    if (msg) msg.textContent = 'Address pulled from ' + parsed.source + '. Add price + rent, or tap below and Ziggy will pull the full listing.';
+    intakeFromAddress(parsed.address);
+    if (msg) msg.textContent = 'Address pulled from ' + parsed.source + '. Add price + rent manually, pull full info via RentCast below, or ask Ziggy to pull the full listing.';
     const showZiggy = () => { if (ziggyRow) ziggyRow.hidden = false; };
-    if (loadRcKey()) {
-      // BYOK RentCast pull: ~4 calls, runs automatically.
-      if (ziggyRow) ziggyRow.hidden = true;
-      if (msg) msg.textContent = 'Address pulled from ' + parsed.source + '. Pulling listing data via RentCast…';
-      btn.disabled = true;
-      rentcastLookup(parsed.address).then(res => {
-        btn.disabled = false;
-        handleRentcastResult(res, parsed);
+    // Explicit opt-in RentCast pull — never auto-runs. Button + usage sub-label.
+    const rcBtn = document.getElementById('listingurl-rcpull');
+    refreshRcUsageLabels();
+    if (rcBtn && !rcBtn.dataset.wired) {
+      rcBtn.dataset.wired = '1';
+      rcBtn.addEventListener('click', async () => {
+        const addr = ((document.getElementById('f-addr') || {}).value || '').trim();
+        if (!addr) return;
+        if (!loadRcKey()) { rcGotoSetup(msg); return; }
+        rcBtn.disabled = true;
+        if (msg) msg.textContent = 'Pulling listing data via RentCast…';
+        await intakeRcPull({ address: addr, source: (parseListingUrl(lastListingUrl) || {}).source || 'manual' }, false);
+        rcBtn.disabled = false;
       });
-    } else {
-      showZiggy();
-      appendRcSetupNudge();
     }
+    showZiggy();
+    if (!loadRcKey()) appendRcSetupNudge();
   });
   const zb = document.getElementById('listingurl-ziggy');
   if (zb) zb.addEventListener('click', () => {
@@ -1723,9 +1960,16 @@ function handleRentcastResult(res, parsed) {
   }
   lastRcData = res;
   applyRentcastFills(rentcastFills(res));
-  if (msg) msg.textContent = 'Pulled via RentCast · ~4 calls used.' +
-    (res.partial ? ' (Some fields were unavailable.)' : '') +
-    ' Review the filled values, then hit Run analysis.';
+  if (msg) {
+    if (res.cached) {
+      msg.textContent = 'Loaded from cache · 0 calls used. Review the filled values, then hit Run analysis.';
+      appendRcRepull(msg, () => intakeRcPull(parsed, true));
+    } else {
+      msg.textContent = 'Enriched via RentCast · ' + (res.attempts || 4) + ' calls used.' +
+        (res.partial ? ' (Some fields were unavailable.)' : '') +
+        ' Review the filled values, then hit Run analysis.';
+    }
+  }
   if (ziggyRow) ziggyRow.hidden = true;
 }
 
@@ -1735,10 +1979,334 @@ function appendRcSetupNudge() {
   const a = document.createElement('a');
   a.id = 'rc-setup-nudge';
   a.href = '#/setup';
-  a.textContent = 'Add a RentCast key in Setup for automatic pulls.';
+  a.textContent = 'Add a RentCast key in Setup to enable full-info pulls.';
   a.style.cssText = 'margin-left:8px;color:var(--accent)';
   msg.appendChild(document.createTextNode(' '));
   msg.appendChild(a);
+}
+
+/* Explicit opt-in RentCast pull shared by the intake card and the results view.
+   Key gate → cache check → native confirm with cost → lookup → usage counted
+   by requests actually fired. Cached hits cost 0 calls and skip the confirm.
+   Never fires without a saved key AND an explicit confirm. Returns the lookup
+   result, or {ok:false, reason:'no-key'|'cancelled'} with zero calls fired.
+   opts.force bypasses the cache (re-pull). */
+async function gatedRentcastPull(address, opts) {
+  opts = opts || {};
+  if (!loadRcKey()) return rcErr('no-key', 'Add your free RentCast key in Setup → Property data first.');
+  const ckey = 'pull:' + rcCacheNorm(address);
+  if (!opts.force) {
+    const hit = rcCacheGet(ckey, RC_PULL_TTL_MS);
+    if (hit) return Object.assign({ ok: true, cached: true, attempts: 0 }, hit);
+  }
+  const u = rcUsage();
+  const sayYes = (typeof confirm === 'function')
+    ? confirm('Pull full property info via RentCast? This uses ~4 of your 50 free calls this month (' + u.used + ' used so far).')
+    : true;
+  if (!sayYes) return { ok: false, reason: 'cancelled' };
+  const res = await rentcastLookup(address);
+  rcUsageAdd(res.attempts || 0);
+  refreshRcUsageLabels();
+  if (res.ok) {
+    const { ok, attempts, partial, ...data } = res; // cache normalized data only
+    rcCacheSet(ckey, data);
+  }
+  return res;
+}
+
+/* Intake-card pull flow: factored so the "Re-pull fresh" link can reuse it. */
+async function intakeRcPull(parsed, force) {
+  const msg = (typeof document !== 'undefined') && document.getElementById('listingurl-msg');
+  const res = await gatedRentcastPull(parsed.address, { force: !!force });
+  if (!res.ok && (res.reason === 'cancelled' || res.reason === 'no-key')) {
+    if (msg) {
+      if (res.reason === 'no-key') rcGotoSetup(msg);
+      else msg.textContent = 'Address pulled from ' + parsed.source + '. Pull cancelled — no calls used.';
+    }
+    return;
+  }
+  handleRentcastResult(res, parsed);
+}
+
+/* "Re-pull fresh" link — bypasses the cache, same confirm dialog. */
+function appendRcRepull(msgEl, onRepull) {
+  if (!msgEl || typeof document === 'undefined' || document.getElementById('rc-repull')) return;
+  const a = document.createElement('a');
+  a.id = 'rc-repull';
+  a.href = '#';
+  a.textContent = 'Re-pull fresh (uses ~4 calls)';
+  a.style.cssText = 'margin-left:8px;color:var(--accent)';
+  a.addEventListener('click', async (e) => {
+    e.preventDefault();
+    a.remove();
+    await onRepull();
+  });
+  msgEl.appendChild(document.createTextNode(' '));
+  msgEl.appendChild(a);
+}
+
+/* Results-view enrich flow: factored so the "Re-pull fresh" link can reuse it. */
+async function enrichDealFromPull(deal, force) {
+  const msg = (typeof document !== 'undefined') && document.getElementById('rc-enrich-msg');
+  const res = await gatedRentcastPull(deal.addr, { force: !!force });
+  if (!res.ok && (res.reason === 'cancelled' || res.reason === 'no-key')) {
+    if (msg) {
+      if (res.reason === 'no-key') rcGotoSetup(msg);
+      else msg.textContent = 'Re-pull cancelled — no calls used.';
+    }
+    return;
+  }
+  if (!res.ok) { if (msg) msg.textContent = res.message + ' You can fill in manually instead.'; return; }
+  applyRentcastToDeal(deal, res);
+  analyzeDeal(deal);
+  upsertDeal(deal);
+  renderResults(deal.id);
+  const m2 = (typeof document !== 'undefined') && document.getElementById('rc-enrich-msg');
+  if (m2) {
+    if (res.cached) {
+      m2.textContent = 'Loaded from cache · 0 calls used.';
+      appendRcRepull(m2, () => enrichDealFromPull(deal, true));
+    } else {
+      m2.textContent = 'Enriched via RentCast · ' + (res.attempts || 4) + ' calls used.';
+    }
+  }
+}
+
+/* No-key gating notice with a button that navigates to Setup. */
+function rcGotoSetup(msgEl) {
+  if (msgEl) msgEl.innerHTML = 'Add your free RentCast key in Setup → Property data first. <button type="button" class="btn secondary" id="rc-goto-setup" style="margin-left:8px">Open Setup</button>';
+  const b = (typeof document !== 'undefined') && document.getElementById('rc-goto-setup');
+  if (b) b.addEventListener('click', () => go('setup'));
+}
+
+/* Re-render the usage labels wherever they appear (Setup card, intake
+   pull button, results enrich button). No-ops in node (no document). */
+function refreshRcUsageLabels() {
+  if (typeof document === 'undefined') return;
+  const u = rcUsage(), low = u.used >= RC_WARN_AT;
+  const set = (id, text) => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = text; if (el.classList) el.classList.toggle('rc-low', low); }
+  };
+  set('rc-usage', u.used + ' of ' + RC_FREE_LIMIT + ' free calls used this month.');
+  set('listingurl-rcpull-sub', 'Uses ~4 calls · ' + u.used + ' of ' + RC_FREE_LIMIT + ' free used this month');
+  set('rc-enrich-sub', 'Uses ~4 calls · ' + u.used + ' of ' + RC_FREE_LIMIT + ' free used this month');
+  set('fd-sub', '1 call per search · ' + u.used + ' of ' + RC_FREE_LIMIT + ' free used this month');
+}
+
+/* ================= Results-view enrichment (Buy & Hold) ================= */
+function rcEnrichCardHtml() {
+  const u = rcUsage();
+  return `<div class="card no-print"><h3>Enrich this analysis</h3>
+    <p><button type="button" class="btn" id="rc-enrich-btn">Enrich this analysis with RentCast</button>
+    <span class="tip${u.used >= RC_WARN_AT ? ' rc-low' : ''}" id="rc-enrich-sub">Uses ~4 calls · ${u.used} of ${RC_FREE_LIMIT} free used this month</span></p>
+    <p class="tip" id="rc-enrich-msg" role="status"></p></div>`;
+}
+
+/* Pure: apply normalized RentCast data to a deal object in place. */
+function applyRentcastToDeal(deal, res) {
+  const fills = rentcastFills(res);
+  if (fills.price != null) deal.price = fills.price;
+  if (fills.rent != null) deal.rent = fills.rent;
+  if (fills.beds != null) deal.beds = fills.beds;
+  deal.intel = deal.intel || {};
+  if (fills.sqft != null) deal.intel.sqft = fills.sqft;
+  if (fills.yearBuilt != null) deal.intel.yearBuilt = fills.yearBuilt;
+  if (fills.lastSaleDate) deal.intel.lastSaleDate = fills.lastSaleDate;
+  if (fills.lastSalePrice != null) deal.intel.lastSalePrice = fills.lastSalePrice;
+  if (fills.dom != null) deal.intel.dom = fills.dom;
+  deal.photos = deal.photos || [];
+  (fills.photos || []).forEach(u => {
+    if (deal.photos.length < 6) deal.photos.push({ src: u, name: 'via RentCast' });
+  });
+  deal.rcData = res;
+  const stats = intelStats(deal.price, deal.intel.lastSalePrice, deal.intel.lastSaleDate);
+  deal.intel.yearsSinceSale = stats.yearsSinceSale;
+  deal.intel.priceChangePct = stats.priceChangePct;
+}
+
+function wireRcEnrich(deal) {
+  const btn = document.getElementById('rc-enrich-btn');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const msg = document.getElementById('rc-enrich-msg');
+    const addr = (deal.addr || '').trim();
+    if (!addr) { if (msg) msg.textContent = 'No address on this deal — add one on the analysis form first.'; return; }
+    if (!loadRcKey()) { rcGotoSetup(msg); return; }
+    btn.disabled = true;
+    if (msg) msg.textContent = 'Pulling listing data via RentCast…';
+    await enrichDealFromPull(deal, false);
+    const b2 = document.getElementById('rc-enrich-btn');
+    if (b2) b2.disabled = false;
+  });
+}
+
+/* ================= Find deals near me (RentCast listings search) ==========
+   Location search over /v1/listings/sale. Each search costs 1 call against
+   the same monthly counter; results are cached 24h by query key. No confirm
+   modal — the cost is shown on the button. Max price is filtered client-side
+   (RentCast's documented sale-listing filters don't include a reliable
+   priceMax), noted in the UI copy. */
+let fdGeo = null; // {latitude, longitude} from the "Use my location" button
+let lastFdListings = [];
+
+function parseLocationInput(s) {
+  s = String(s || '').trim();
+  if (/^\d{5}$/.test(s)) return { zipCode: s };
+  const m = s.match(/^(.+?),\s*([A-Za-z]{2})$/);
+  if (m && m[1].trim()) return { city: m[1].trim(), state: m[2].toUpperCase() };
+  return null;
+}
+
+function normalizeSearchResults(data) {
+  const arr = Array.isArray(data) ? data : [];
+  return arr.slice(0, 20).map(l => {
+    const line1 = rcPick(l, ['addressLine1', 'address']) || '';
+    const city = rcPick(l, ['city']) || '', state = rcPick(l, ['state']) || '', zip = rcPick(l, ['zipCode', 'zip']) || '';
+    const addr = (line1 + ', ' + city + ', ' + state + ' ' + zip).replace(/^[,\s]+|[,\s]+$/g, '').replace(/,\s*,/g, ',').trim();
+    const photosRaw = rcPick(l, ['photos', 'images', 'photoUrls']) || [];
+    const photos = (Array.isArray(photosRaw) ? photosRaw : [])
+      .map(x => (typeof x === 'string' ? x : (x && (x.url || x.src))) || null).filter(Boolean);
+    return {
+      address: addr || 'Address not listed',
+      price: rcNum(rcPick(l, ['price', 'listPrice'])),
+      beds: rcNum(rcPick(l, ['bedrooms', 'beds'])),
+      baths: rcNum(rcPick(l, ['bathrooms', 'baths'])),
+      sqft: rcNum(rcPick(l, ['squareFootage', 'sqft', 'livingArea'])),
+      dom: rcNum(rcPick(l, ['daysOnMarket', 'days_on_market'])),
+      photo: photos[0] || null,
+    };
+  });
+}
+
+async function rentcastSearch(p) {
+  // p: {zipCode}|{city,state}|{latitude,longitude,radius}, plus propertyType
+  const key = loadRcKey();
+  if (!key) return rcErr('no-key', 'Add your free RentCast key in Setup → Property data first.');
+  const q = {};
+  if (p.zipCode) q.zipCode = p.zipCode;
+  if (p.city) { q.city = p.city; q.state = p.state; }
+  if (p.latitude != null) { q.latitude = String(p.latitude); q.longitude = String(p.longitude); q.radius = String(p.radius || '10'); }
+  q.propertyType = p.propertyType || 'Multi-Family';
+  q.limit = '20';
+  const canon = {};
+  Object.keys(q).sort().forEach(k => { canon[k] = q[k]; });
+  const ckey = 'search:' + JSON.stringify(canon);
+  const hit = rcCacheGet(ckey, RC_SEARCH_TTL_MS);
+  if (hit) return { ok: true, cached: true, attempts: 0, listings: hit };
+  const res = await rentcastFetch('/listings/sale?' + new URLSearchParams(q).toString(), key);
+  if (!res.ok) return res;
+  const listings = normalizeSearchResults(res.data);
+  rcUsageAdd(1);
+  refreshRcUsageLabels();
+  rcCacheSet(ckey, listings);
+  return { ok: true, listings, attempts: 1 };
+}
+
+/* Fill the link-intake from a search result and take the user there. */
+function fillIntakeAddress(addr) {
+  if (typeof document !== 'undefined') intakeFromAddress(addr);
+  if (typeof location !== 'undefined') go('new');
+  const card = (typeof document !== 'undefined') && document.getElementById('link-intake-card');
+  if (card && card.scrollIntoView) { try { card.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) {} }
+}
+
+function renderFdResults(listings, note) {
+  const box = document.getElementById('fd-results');
+  if (!box) return;
+  lastFdListings = listings;
+  if (!listings.length) {
+    box.innerHTML = '<p class="tip">No listings found for that search.' + (note ? ' ' + esc(note) : '') + '</p>';
+    return;
+  }
+  box.innerHTML = (note ? '<p class="tip">' + esc(note) + '</p>' : '') +
+    '<div class="match-grid">' + listings.map((l, i) =>
+      '<div class="match-card">' +
+      (l.photo ? '<img src="' + esc(l.photo) + '" alt="Listing photo" loading="lazy" style="width:100%;border-radius:8px;margin-bottom:8px">' : '') +
+      '<div class="match-head"><strong>' + esc(l.address) + '</strong>' +
+      (l.price != null ? '<span class="match-price">' + fmtMoney(l.price) + '</span>' : '') + '</div>' +
+      '<p class="tip">' + [l.beds != null ? l.beds + ' bd' : null, l.baths != null ? l.baths + ' ba' : null,
+        l.sqft != null ? Math.round(l.sqft).toLocaleString('en-US') + ' sqft' : null,
+        l.dom != null ? Math.round(l.dom) + ' DOM' : null].filter(Boolean).join(' · ') + '</p>' +
+      '<p><button type="button" class="btn secondary" data-fd-analyze="' + i + '">Analyze</button></p>' +
+      '</div>').join('') + '</div>';
+}
+
+function fdAppendSetupNudge() {
+  const errEl = document.getElementById('fd-error');
+  if (!errEl || document.getElementById('fd-setup-nudge')) return;
+  const a = document.createElement('a');
+  a.id = 'fd-setup-nudge';
+  a.href = '#/setup';
+  a.textContent = 'Add a RentCast key in Setup';
+  a.style.cssText = 'margin-left:8px;color:var(--accent)';
+  errEl.appendChild(document.createTextNode(' '));
+  errEl.appendChild(a);
+}
+
+function fdSyncNoKey() {
+  const n = document.getElementById('fd-nokey');
+  if (n) n.hidden = !!loadRcKey();
+}
+
+async function runFindDealsSearch() {
+  const errEl = document.getElementById('fd-error');
+  const box = document.getElementById('fd-results');
+  const setErr = t => { if (errEl) errEl.textContent = t || ''; };
+  setErr('');
+  if (!loadRcKey()) {
+    setErr('Add your free RentCast key in Setup → Property data first.');
+    fdAppendSetupNudge();
+    return;
+  }
+  const locRaw = ((document.getElementById('fd-loc') || {}).value || '');
+  let loc = parseLocationInput(locRaw);
+  if (!loc && fdGeo) {
+    loc = { latitude: fdGeo.latitude, longitude: fdGeo.longitude, radius: ((document.getElementById('fd-radius') || {}).value || '10') };
+  }
+  if (!loc) { setErr('Enter a City, ST (e.g. Fort Pierce, FL) or a 5-digit ZIP — or tap "Use my location".'); return; }
+  const maxPrice = Math.round(parseFloat(((document.getElementById('fd-maxprice') || {}).value || '')) || 0);
+  const propertyType = ((document.getElementById('fd-proptype') || {}).value || 'Multi-Family');
+  if (box) box.innerHTML = '<p class="tip">Searching…</p>';
+  const res = await rentcastSearch(Object.assign({}, loc, { propertyType }));
+  if (!res.ok) {
+    setErr(res.message);
+    if (res.reason === 'bad-key') fdAppendSetupNudge();
+    if (box) box.innerHTML = '';
+    return;
+  }
+  let listings = res.listings || [];
+  const before = listings.length;
+  if (maxPrice > 0) listings = listings.filter(l => l.price == null || l.price <= maxPrice);
+  renderFdResults(listings, (res.cached ? 'Loaded from cache · 0 calls used.' : '1 call used.') +
+    (before !== listings.length ? ' ' + listings.length + ' of ' + before + ' under ' + fmtMoney(maxPrice) + ' (price filtered in-app).' : ''));
+}
+
+function wireFindDeals() {
+  const sbtn = document.getElementById('fd-search');
+  if (sbtn) sbtn.addEventListener('click', runFindDealsSearch);
+  const gbtn = document.getElementById('fd-geo');
+  if (gbtn) gbtn.addEventListener('click', () => {
+    const m = document.getElementById('fd-loc-msg');
+    if (!navigator.geolocation) { if (m) m.textContent = 'Location unavailable — type a City, ST or ZIP.'; return; }
+    if (m) m.textContent = 'Locating…';
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        fdGeo = { latitude: +pos.coords.latitude.toFixed(4), longitude: +pos.coords.longitude.toFixed(4) };
+        if (m) m.textContent = 'Using your location ✓ (' + fdGeo.latitude + ', ' + fdGeo.longitude + ')';
+      },
+      () => { if (m) m.textContent = 'Location unavailable — type a City, ST or ZIP.'; },
+      { timeout: 10000 });
+  });
+  const mp = document.getElementById('fd-maxprice');
+  if (mp) mp.addEventListener('input', () => { mp.dataset.touched = '1'; });
+  const box = document.getElementById('fd-results');
+  if (box) box.addEventListener('click', e => {
+    const t = e.target && e.target.closest ? e.target.closest('[data-fd-analyze]') : null;
+    if (!t) return;
+    const l = lastFdListings[+t.dataset.fdAnalyze];
+    if (l) fillIntakeAddress(l.address);
+  });
 }
 
 /* ================= Deal Watch =================
@@ -1914,6 +2482,12 @@ async function renderWatchMatches() {
 function renderWatch() {
   renderWatchStatus();
   renderWatchMatches();
+  // Find-deals: prefill max price from watch criteria (until the user edits it)
+  const mp = document.getElementById('fd-maxprice');
+  const w = loadWatch();
+  if (mp && w && w.maxPrice && !mp.dataset.touched) mp.value = w.maxPrice;
+  fdSyncNoKey();
+  refreshRcUsageLabels();
 }
 
 function copyWatchSettings() {
@@ -1971,7 +2545,10 @@ function wireWatch() {
 /* Node-testable exports for the watch helpers (browser bundle unaffected). */
 if (typeof module !== 'undefined' && module.exports) {
   Object.assign(module.exports, { watchCopyText, fmtMoney, WATCH_INTERVALS, WATCH_PROPTYPES, WATCH_STRATS, LS_WATCH, WATCH_RESULTS_URL, parseListingUrl, suggestOffer, titleCase,
-    rentcastLookup, rentcastFetch, normalizeRentcast, rentcastFills, applyRentcastFills, loadRcKey, saveRcKey, clearRcKey, RC_BASE, LS_RC });
+    rentcastLookup, rentcastFetch, normalizeRentcast, rentcastFills, applyRentcastFills, loadRcKey, saveRcKey, clearRcKey, RC_BASE, LS_RC,
+    gatedRentcastPull, applyRentcastToDeal, rcUsage, rcUsageAdd, rcMonthStr, LS_RC_USAGE, RC_FREE_LIMIT, RC_WARN_AT, refreshRcUsageLabels,
+    rcCacheNorm, rcCacheRead, rcCacheGet, rcCacheSet, LS_RC_CACHE, RC_PULL_TTL_MS, RC_SEARCH_TTL_MS, RC_CACHE_MAX,
+    rentcastSearch, normalizeSearchResults, parseLocationInput, fillIntakeAddress, intakeFromAddress });
 }
 
 function init() {
@@ -2115,6 +2692,7 @@ function init() {
   renderPhotoGallery();
   wireWatch();
   wireListingIntake();
+  wireFindDeals();
   route();
 }
 
