@@ -117,12 +117,17 @@ function route() {
   if (name === 'new' && query) applySharedParams(query);
 }
 
-/* Pre-fill the Buy & Hold form from a shared hash link, e.g.
+/* Pre-fill the analysis form from a shared hash link, e.g.
    #/new?price=200000&rent=2500&address=1403%20Avenue%20M&taxA=2600&insA=1800
    &downPct=20&ratePct=7&termYears=30&loanType=conventional&units=2&zip=34950
    or #/new?sharedUrl=<encoded listing URL> (address parsed via parseListingUrl).
-   Supported params: price, rent, address, taxA, insA, hoaM, downPct, ratePct,
-   termYears, loanType, units (appended to notes), zip (appended to address). */
+   Strategy: &strategy=buy|flip|build (default buy).
+   Flip params: arv (f-flip-arv), rehab (f-flip-rehab), holdMo (f-flip-hold).
+   Build params: land (f-build-land), hard (f-build-hard), buildArv (f-build-arv),
+   buildSqft (f-build-sqft).
+   Extras: beds (f-beds), sqft (f-sqft), year (f-yearbuilt), lastPrice, lastDate,
+   listnote, realtor (appended to notes), autorun=1 (submit the form automatically
+   once required fields for the strategy are present). */
 function applySharedParams(query) {
   let p;
   try { p = new URLSearchParams(query); } catch (err) { return; }
@@ -133,11 +138,18 @@ function applySharedParams(query) {
     return false;
   };
   let filled = 0;
-  setStrategy('buy');
+  const strat = p.get('strategy');
+  const strategy = (strat === 'flip' || strat === 'build') ? strat : 'buy';
+  setStrategy(strategy);
   const lt = p.get('loanType');
   if (lt && LOAN_TYPES[lt]) { setLoanType(lt, false); filled++; }
   [['price', 'f-price'], ['rent', 'f-rent'], ['taxA', 'f-tax'], ['insA', 'f-ins'],
-   ['hoaM', 'f-hoa'], ['downPct', 'f-down'], ['ratePct', 'f-rate'], ['termYears', 'f-term']
+   ['hoaM', 'f-hoa'], ['downPct', 'f-down'], ['ratePct', 'f-rate'], ['termYears', 'f-term'],
+   ['beds', 'f-beds'], ['sqft', 'f-sqft'], ['year', 'f-yearbuilt'],
+   ['lastPrice', 'f-lastsaleprice'], ['lastDate', 'f-lastsaledate'], ['listnote', 'f-listnote'],
+   ['arv', 'f-flip-arv'], ['rehab', 'f-flip-rehab'], ['holdMo', 'f-flip-hold'],
+   ['land', 'f-build-land'], ['hard', 'f-build-hard'], ['buildArv', 'f-build-arv'],
+   ['buildSqft', 'f-build-sqft']
   ].forEach(([param, id]) => { if (setVal(id, p.get(param))) filled++; });
   const addr = p.get('address'), zip = p.get('zip');
   if (addr) {
@@ -154,9 +166,33 @@ function applySharedParams(query) {
     const n = document.getElementById('f-notes');
     if (n) { n.value = (n.value ? n.value + ' ' : '') + 'Units: ' + units; filled++; }
   }
+  const realtor = p.get('realtor');
+  if (realtor) {
+    const n = document.getElementById('f-notes');
+    if (n) { n.value = (n.value ? n.value + ' ' : '') + 'Listing agent: ' + realtor; filled++; }
+  }
+  const auto = p.get('autorun') === '1';
   if (filled > 0) {
     const notice = document.getElementById('shared-notice');
-    if (notice) { notice.hidden = false; notice.textContent = 'Fields filled from shared link — review and hit Analyze.'; }
+    if (notice) {
+      notice.hidden = false;
+      notice.textContent = auto
+        ? 'Fields filled from Ziggy\u2019s pull \u2014 running the analysis\u2026'
+        : 'Fields filled from shared link \u2014 review and hit Analyze.';
+    }
+  }
+  if (auto && filled > 0) {
+    const num = v => +v || 0;
+    const ready = strategy === 'buy' ? num(p.get('price')) > 0
+      : strategy === 'flip' ? (num(p.get('price')) > 0 && num(p.get('arv')) > 0)
+      : (num(p.get('land')) > 0 && num(p.get('hard')) > 0);
+    if (ready) {
+      setTimeout(() => {
+        const form = document.getElementById('deal-form');
+        if (form && form.requestSubmit) form.requestSubmit();
+        else if (form) form.dispatchEvent(new Event('submit', { cancelable: true }));
+      }, 400);
+    }
   }
 }
 if (typeof window !== 'undefined') {
@@ -2214,10 +2250,16 @@ function wireListingIntake() {
     zb.dataset.wired = '1';
     zb.addEventListener('click', () => {
       if (!agentState.url) return;
-      const text = 'Pull this listing into DealLens: ' + agentState.url;
+      const stratLabel = (typeof STRATEGY_LABELS !== 'undefined' && STRATEGY_LABELS[agentState.strategy]) || agentState.strategy;
+      const loanLabel = (typeof LOAN_TYPES !== 'undefined' && LOAN_TYPES[agentState.loan] && LOAN_TYPES[agentState.loan].label) || agentState.loan;
+      const addr = (agentState.parsed && agentState.parsed.address) || '';
+      const text = 'Pull this listing into DealLens (full scrape): ' + agentState.url
+        + ' | Address: ' + addr
+        + ' | Strategy: ' + stratLabel + ' | Loan: ' + loanLabel
+        + ' \u2014 scrape the page for price, rent/potential rent, taxes, insurance estimate, HOA, beds/baths, sqft, year built, MLS#, and listing agent info; cross-search the MLS# and address on other sites; reply with a DealLens pre-fill link including autorun=1.';
       const done = () => {
         const h = document.getElementById('agent-ziggy-hint');
-        if (h) h.textContent = "Copied — paste that to Ziggy in chat. He'll reply with a link that opens DealLens fully filled in.";
+        if (h) h.textContent = "Copied \u2014 paste that to Ziggy in chat. He'll scrape the listing and reply with a link that opens DealLens fully filled in, analysis already run.";
       };
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
       else fallbackCopy(text, done);
