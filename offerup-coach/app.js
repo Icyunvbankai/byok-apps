@@ -71,6 +71,12 @@ const PROVIDERS = {
     defaultModel: 'claude-sonnet-4-5', budgetModel: 'claude-haiku-4-5',
     costHint: '~$0.40/mock', budgetHint: '~$0.05/mock', corsNote: true,
   },
+  gemini: {
+    name: 'Gemini', url: 'https://generativelanguage.googleapis.com/v1beta/models',
+    keyHeader: k => ({}),
+    defaultModel: 'gemini-3.5-flash-lite', budgetModel: 'gemini-3.5-flash-lite',
+    costHint: '~$0.20/mock', budgetHint: '~$0.03/mock', gemini: true,
+  },
 };
 /* Approximate $/1M tokens [input, output]. Shown as estimates only. */
 const MODEL_PRICES = [
@@ -95,8 +101,37 @@ const estCost = (inTok, outTok, model) => {
 };
 const fmtCost = c => c < 0.01 ? '<$0.01' : '$' + c.toFixed(2);
 
+
+/* Gemini provider adapter: key goes in the URL query param, not a header. */
+async function callGemini(key, model, system, text, maxTokens, images) {
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+    + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(key);
+  const parts = [{ text: (system ? system + '\n\n' : '') + (text || '') }];
+  (images || []).forEach(im => {
+    const b64 = im.b64 || (im.dataUrl && im.dataUrl.split(',')[1]) || '';
+    if (b64) parts.push({ inline_data: { mime_type: im.mediaType || 'image/jpeg', data: b64 } });
+  });
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts }],
+      generationConfig: { maxOutputTokens: maxTokens || 700, temperature: 0.4 },
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error('Provider error ' + res.status + ': ' + t.slice(0, 160));
+  }
+  const j = await res.json();
+  return ((j.candidates || []).map(c =>
+    ((c.content && c.content.parts) || []).map(pt => pt.text || '').join('')
+  ).join('\n') || '');
+}
+
 async function callLLM(provider, key, model, system, user, maxTokens, temperature, history) {
   const p = PROVIDERS[provider];
+  if (p.gemini) { const gt = await callGemini(key, model, system, user, maxTokens); return { text: gt, inTok: 0, outTok: 0 }; }
   let res, inTok = 0, outTok = 0;
   if (provider === 'anthropic') {
     const messages = (history || []).concat([{ role: 'user', content: user }]);
