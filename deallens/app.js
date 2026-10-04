@@ -700,6 +700,31 @@ async function runAgentTests() {
   agentState.parsed = null;
   const ape2 = agentPatch();
   assert(ape2.error === 'Parse a listing link first.', 'A10 no parse errors');
+
+  // A11: shared pre-fill link — strategy + flip/build/extended params + autorun gating
+  const els11 = {};
+  let submitted11 = false;
+  els11['deal-form'] = { requestSubmit: () => { submitted11 = true; } };
+  global.document = {
+    getElementById: id => (els11[id] || (els11[id] = { value: '', hidden: true, textContent: '', style: {}, dataset: {} })),
+    querySelectorAll: () => [],
+  };
+  applySharedParams('strategy=flip&loanType=dscr&price=200000&arv=300000&rehab=40000&address=1403+Avenue+M&zip=34950&beds=3+%2F+2&sqft=1500&year=1978&realtor=Jane+Doe+555-0100&autorun=1');
+  assert(els11['f-price'].value === '200000', 'A11 price filled');
+  assert(els11['f-flip-arv'].value === '300000' && els11['f-flip-rehab'].value === '40000', 'A11 flip fields filled');
+  assert(els11['f-beds'].value === '3 / 2' && els11['f-sqft'].value === '1500' && els11['f-yearbuilt'].value === '1978', 'A11 beds/sqft/year filled');
+  assert(els11['f-addr'].value === '1403 Avenue M 34950', 'A11 address+zip, got ' + els11['f-addr'].value);
+  assert(/Jane Doe/.test(els11['f-notes'].value), 'A11 realtor in notes');
+  assert(currentStrategy === 'flip', 'A11 strategy set to flip');
+  await new Promise(r => setTimeout(r, 650));
+  assert(submitted11, 'A11 autorun submitted the form');
+  // autorun must NOT fire when required fields are missing (flip without ARV)
+  submitted11 = false;
+  applySharedParams('strategy=flip&price=200000&autorun=1');
+  await new Promise(r => setTimeout(r, 650));
+  assert(!submitted11, 'A11 no autorun without required fields');
+  setStrategy('buy');
+  delete global.document;
   delete global.document;
 
   global.fetch = realFetch;
