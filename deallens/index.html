@@ -106,25 +106,71 @@
 
   <!-- ============ NEW ANALYSIS ============ -->
   <section class="view" id="view-new" aria-label="New analysis">
-    <h1>New deal analysis</h1>
-    <p class="lead" style="margin-bottom:20px">Enter what you know. Defaults are national medians — adjust anything shaded in the assumptions.</p>
+    <div class="new-head no-print">
+      <div>
+        <h1>New deal analysis</h1>
+        <p class="lead" style="margin-bottom:0">Pick a strategy, enter what you know. Defaults are national medians.</p>
+      </div>
+      <button class="btn secondary" data-reset id="top-reset-btn">New Analysis (reset)</button>
+    </div>
 
     <div class="notice warn" id="no-key-notice" hidden>You haven't saved an API key yet — the math will still run, but the AI narrative needs one. <a href="#/setup" data-nav="setup">Set it up</a> (30 seconds).</div>
 
+    <div class="strat-tabs no-print" role="tablist" aria-label="Strategy">
+      <button type="button" class="strat-tab on" data-strategy="buy" role="tab" aria-selected="true">Buy &amp; Hold</button>
+      <button type="button" class="strat-tab" data-strategy="flip" role="tab" aria-selected="false">Rehab Flip</button>
+      <button type="button" class="strat-tab" data-strategy="build" role="tab" aria-selected="false">New Build</button>
+    </div>
+
     <form id="deal-form" novalidate>
-      <div class="card">
+      <div class="card" data-modes="buy flip">
         <h3>Property</h3>
         <div class="grid2">
-          <div class="field"><label for="f-name">Label / address</label><input id="f-name" placeholder="123 Main St, Tampa FL"></div>
+          <div class="field"><label for="f-name">Label</label><input id="f-name" placeholder="Duplex near downtown"></div>
+          <div class="field"><label for="f-addr">Street address <span class="hint">(unlocks parcel / map / listing links)</span></label><input id="f-addr" placeholder="123 Main St, Fort Pierce, FL 34950" autocomplete="off"></div>
           <div class="field"><label for="f-price">Purchase price ($)</label><input id="f-price" type="number" min="1" required placeholder="200000"></div>
-          <div class="field"><label for="f-rent">Monthly rent ($)</label><input id="f-rent" type="number" min="0" required placeholder="1800"></div>
+          <div class="field" data-modes="buy"><label for="f-rent">Monthly rent ($)</label><input id="f-rent" type="number" min="0" placeholder="1800"></div>
           <div class="field"><label for="f-beds">Beds / baths <span class="hint">(optional)</span></label><input id="f-beds" placeholder="3 / 2"></div>
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" data-modes="buy flip build">
+        <h3>Property intel <span class="hint" style="font-weight:400;color:var(--muted-fg)">(free public sources — nothing auto-fetched)</span></h3>
+        <div class="grid2">
+          <div class="field"><label for="f-dom">Days on market</label><input id="f-dom" type="number" min="0" placeholder="21"></div>
+          <div class="field"><label for="f-lastsaledate">Last sale date</label><input id="f-lastsaledate" type="date"></div>
+          <div class="field"><label for="f-lastsaleprice">Last sale price ($)</label><input id="f-lastsaleprice" type="number" min="0" placeholder="150000"></div>
+          <div class="field"><label for="f-yearbuilt">Year built</label><input id="f-yearbuilt" type="number" min="1700" max="2030" placeholder="1985"></div>
+          <div class="field"><label for="f-sqft">Square feet</label><input id="f-sqft" type="number" min="0" placeholder="1400"></div>
+          <div class="field"><label for="f-listnote">List price history <span class="hint">(optional note)</span></label><input id="f-listnote" placeholder="Listed 210k → cut to 195k after 30 days"></div>
+        </div>
+        <p class="tip" id="intel-links-hint">Enter the street address above to get parcel, map, and listing deep-links.</p>
+        <div class="field"><label for="f-photos">Photos <span class="hint">(up to 6 — kept for this session only)</span> <span id="photo-count" class="tip">0 / 6</span></label>
+          <input id="f-photos" type="file" accept="image/*" multiple>
+        </div>
+        <div class="field"><label for="f-photourl">…or paste an image URL</label>
+          <div class="url-row"><input id="f-photourl" type="url" placeholder="https://…"><button type="button" class="btn secondary" id="photourl-add">Add</button></div>
+        </div>
+        <div class="photo-strip" id="photo-gallery" aria-live="polite"></div>
+      </div>
+
+      <div class="card" data-modes="buy flip">
         <h3>Financing</h3>
         <div class="grid2">
+          <div class="field"><label for="f-loantype">Loan type</label>
+            <select id="f-loantype">
+              <option value="conventional" selected>Conventional</option>
+              <option value="fha">FHA</option>
+              <option value="va">VA</option>
+              <option value="dscr">DSCR investor loan</option>
+              <option value="seller">Seller financing</option>
+              <option value="cash">Cash (no loan)</option>
+            </select>
+            <p class="tip" id="loan-note"></p>
+          </div>
+          <div class="field" data-modes="buy flip"><label>&nbsp;</label><p class="tip" id="cash-note" hidden>Cash purchase — cash flow equals NOI and DSCR does not apply.</p></div>
+        </div>
+        <div class="grid2" id="fin-debt-fields">
           <div class="field"><label for="f-down">Down payment (%)</label><input id="f-down" type="number" min="0" max="100" step="0.5" value="20"></div>
           <div class="field"><label for="f-rate">Interest rate (%, annual)</label><input id="f-rate" type="number" min="0" max="20" step="0.125" value="7"></div>
           <div class="field"><label for="f-term">Loan term</label><select id="f-term"><option value="30" selected>30-year fixed</option><option value="15">15-year fixed</option></select></div>
@@ -132,7 +178,7 @@
         </div>
       </div>
 
-      <details class="assume">
+      <details class="assume" data-modes="buy">
         <summary>Operating assumptions (tap to adjust)</summary>
         <div class="body">
           <div class="grid2">
@@ -147,6 +193,31 @@
         </div>
       </details>
 
+      <div class="card" data-modes="flip" style="display:none">
+        <h3>Flip numbers</h3>
+        <div class="grid2">
+          <div class="field"><label for="f-flip-rehab">Rehab budget ($)</label><input id="f-flip-rehab" type="number" min="0" placeholder="60000"></div>
+          <div class="field"><label for="f-flip-arv">After-repair value — ARV ($)</label><input id="f-flip-arv" type="number" min="0" placeholder="330000"></div>
+          <div class="field"><label for="f-flip-hold">Holding time (months)</label><input id="f-flip-hold" type="number" min="1" value="6"></div>
+          <div class="field"><label for="f-flip-sellcost">Selling costs (%) <span class="hint">agent + closing</span></label><input id="f-flip-sellcost" type="number" min="0" max="20" step="0.5" value="8"></div>
+          <div class="field"><label for="f-flip-carry">Monthly carry ($) <span class="hint">taxes + insurance + utilities while held</span></label><input id="f-flip-carry" type="number" min="0" value="500"></div>
+        </div>
+      </div>
+
+      <div class="card" data-modes="build" style="display:none">
+        <h3>Build numbers <span class="hint" style="font-weight:400;color:var(--muted-fg)">(cash basis — construction financing not modeled)</span></h3>
+        <div class="grid2">
+          <div class="field"><label for="f-build-land">Land cost ($)</label><input id="f-build-land" type="number" min="0" placeholder="60000"></div>
+          <div class="field"><label for="f-build-hard">Hard construction costs ($)</label><input id="f-build-hard" type="number" min="0" placeholder="220000"></div>
+          <div class="field"><label for="f-build-softpct">Soft costs (%) <span class="hint">of hard — permits, design, fees</span></label><input id="f-build-softpct" type="number" min="0" max="60" step="1" value="15"></div>
+          <div class="field"><label for="f-build-arv">Finished value — ARV ($)</label><input id="f-build-arv" type="number" min="0" placeholder="350000"></div>
+          <div class="field"><label for="f-build-months">Build time (months)</label><input id="f-build-months" type="number" min="1" value="9"></div>
+          <div class="field"><label for="f-build-carry">Monthly carry ($) <span class="hint">interest + taxes + insurance during build</span></label><input id="f-build-carry" type="number" min="0" value="800"></div>
+          <div class="field"><label for="f-build-sellcost">Selling costs (%)</label><input id="f-build-sellcost" type="number" min="0" max="20" step="0.5" value="8"></div>
+          <div class="field"><label for="f-build-sqft">Finished sqft <span class="hint">(optional — for cost/sqft)</span></label><input id="f-build-sqft" type="number" min="0" placeholder="1800"></div>
+        </div>
+      </div>
+
       <div class="field"><label for="f-notes">Notes <span class="hint">(optional — neighborhood, listing quirks, anything the AI should weigh)</span></label><input id="f-notes" placeholder="Near university, HOA caps rentals at 20%..."></div>
 
       <p><button type="submit" class="btn block" id="analyze-btn">Run analysis</button></p>
@@ -158,10 +229,16 @@
   <section class="view" id="view-results" aria-label="Results">
     <div id="results-content"></div>
     <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn" id="print-btn">Export PDF (print)</button>
-      <button class="btn secondary" data-nav="new">New analysis</button>
+      <button class="btn" id="results-report-btn">Full Report</button>
+      <button class="btn secondary" id="results-print-btn">Print</button>
+      <button class="btn secondary" data-reset>New Analysis (reset)</button>
       <button class="btn secondary" data-nav="history">History</button>
     </p>
+  </section>
+
+  <!-- ============ FULL REPORT ============ -->
+  <section class="view" id="view-report" aria-label="Full report">
+    <div id="report-content"></div>
   </section>
 
   <!-- ============ HISTORY ============ -->
