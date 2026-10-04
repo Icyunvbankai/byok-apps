@@ -32,7 +32,7 @@ function upsertDeal(deal) {
 function deleteDeal(id) { delete dealCache[id]; saveDeals(loadDeals().filter(d => d.id !== id)); }
 
 /* ================= Router ================= */
-const VIEWS = ['landing', 'setup', 'new', 'results', 'report', 'history', 'compare', 'pricing'];
+const VIEWS = ['landing', 'setup', 'new', 'watch', 'results', 'report', 'history', 'compare', 'pricing'];
 let currentDealId = null;
 
 function showView(name) {
@@ -46,6 +46,7 @@ function showView(name) {
   if (name === 'history') renderHistory();
   if (name === 'setup') syncSetupUI();
   if (name === 'new') syncNoKeyNotice();
+  if (name === 'watch') renderWatch();
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function go(name, arg) {
@@ -1103,11 +1104,191 @@ function resetAnalysis() {
   go('new');
 }
 
+/* ================= Deal Watch =================
+   The hunt itself runs via the assistant's cron — this tab is where the user
+   sets criteria + interval, then sends the copied settings to Ziggy in chat. */
+const LS_WATCH = 'deallens_watch';
+const WATCH_RESULTS_URL = './deal-watch-results.json';
+const WATCH_INTERVALS = { daily: 'Daily', every3: 'Every 3 days', weekly: 'Weekly' };
+const WATCH_PROPTYPES = { multifamily: '2–4 unit multifamily', duplex: 'Duplex', triplex: 'Triplex', fourplex: 'Fourplex' };
+const WATCH_STRATS = { buy: 'Buy & Hold', flip: 'Rehab Flip', build: 'New Build' };
+
+function loadWatch() {
+  try { return JSON.parse(localStorage.getItem(LS_WATCH) || 'null'); } catch { return null; }
+}
+function saveWatch(w) { localStorage.setItem(LS_WATCH, JSON.stringify(w)); }
+function clearWatch() { localStorage.removeItem(LS_WATCH); }
+
+function fmtMoney(v) { return '$' + Math.round(+v || 0).toLocaleString('en-US'); }
+
+/* Exact copy the user sends to Ziggy in chat to start the cron hunt. */
+function watchCopyText(w) {
+  return 'Deal Watch settings — ZIPs: ' + w.zips +
+    '; Type: ' + (WATCH_PROPTYPES[w.propType] || w.propType) +
+    '; Max price: ' + fmtMoney(w.maxPrice) +
+    '; Strategy: ' + (WATCH_STRATS[w.strategy] || w.strategy) +
+    '; Loan: ' + (LOAN_TYPES[w.loanType] ? LOAN_TYPES[w.loanType].label : w.loanType) +
+    '; Min cash flow: ' + fmtMoney(w.minCashFlow) + '/mo' +
+    '; Interval: ' + (WATCH_INTERVALS[w.interval] || w.interval) +
+    ' — please start the hunt.';
+}
+
+function watchSummaryHTML(w) {
+  const rows = [
+    ['ZIP codes', w.zips],
+    ['Property type', WATCH_PROPTYPES[w.propType] || w.propType],
+    ['Max price', fmtMoney(w.maxPrice)],
+    ['Strategy', WATCH_STRATS[w.strategy] || w.strategy],
+    ['Loan type', LOAN_TYPES[w.loanType] ? LOAN_TYPES[w.loanType].label : w.loanType],
+    ['Minimum cash flow', fmtMoney(w.minCashFlow) + '/mo'],
+    ['Hunt interval', WATCH_INTERVALS[w.interval] || w.interval],
+    ['Activated', w.activatedAt ? new Date(w.activatedAt).toLocaleString() : '—'],
+  ];
+  return '<dl class="watch-summary">' + rows.map(r =>
+    '<div><dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1]) + '</dd></div>').join('') + '</dl>';
+}
+
+function readWatchForm() {
+  const zips = document.getElementById('w-zips').value.trim();
+  const propType = document.getElementById('w-proptype').value;
+  const maxPrice = +document.getElementById('w-maxprice').value;
+  const strategy = document.getElementById('w-strategy').value;
+  const loanType = document.getElementById('w-loantype').value;
+  const minCashFlow = +document.getElementById('w-mincf').value;
+  const iv = document.querySelector('input[name="w-interval"]:checked');
+  return { zips, propType, maxPrice, strategy, loanType, minCashFlow, interval: iv ? iv.value : 'every3' };
+}
+
+function fillWatchForm(w) {
+  document.getElementById('w-zips').value = w.zips || '';
+  document.getElementById('w-proptype').value = w.propType || 'multifamily';
+  document.getElementById('w-maxprice').value = w.maxPrice != null ? w.maxPrice : 400000;
+  document.getElementById('w-strategy').value = w.strategy || 'buy';
+  document.getElementById('w-loantype').value = w.loanType || 'conventional';
+  document.getElementById('w-mincf').value = w.minCashFlow != null ? w.minCashFlow : 200;
+  const iv = document.querySelector('input[name="w-interval"][value="' + (w.interval || 'every3') + '"]');
+  if (iv) iv.checked = true;
+}
+
+function renderWatchStatus() {
+  const w = loadWatch();
+  const formCard = document.getElementById('watch-form-card');
+  const activeCard = document.getElementById('watch-active-card');
+  if (w) {
+    formCard.hidden = true;
+    activeCard.hidden = false;
+    document.getElementById('watch-summary').innerHTML = watchSummaryHTML(w);
+    document.getElementById('watch-copied').textContent = '';
+  } else {
+    formCard.hidden = false;
+    activeCard.hidden = true;
+  }
+}
+
+function matchCardHTML(m) {
+  const bits = [];
+  bits.push('<div class="match-card">');
+  bits.push('<div class="match-head"><strong>' + esc(m.address || 'Address not listed') + '</strong>' +
+    (m.price != null ? '<span class="match-price">' + fmtMoney(m.price) + '</span>' : '') + '</div>');
+  const meta = [];
+  if (m.type || m.units) meta.push(esc([m.type, m.units].filter(Boolean).join(' · ')));
+  if (m.found) meta.push('found ' + esc(m.found));
+  if (meta.length) bits.push('<p class="tip">' + meta.join(' &nbsp;·&nbsp; ') + '</p>');
+  const stats = [];
+  if (m.score != null) stats.push('<div class="v">' + esc(m.score) + '</div><div class="l">deal score</div>');
+  if (m.cashFlow != null) stats.push('<div class="v">' + fmtMoney(m.cashFlow) + '/mo</div><div class="l">cash flow</div>');
+  if (m.capRate != null) stats.push('<div class="v">' + esc(m.capRate) + '%</div><div class="l">cap rate</div>');
+  if (stats.length) bits.push('<div class="match-stats">' + stats.map(s => '<div class="stat">' + s + '</div>').join('') + '</div>');
+  if (m.url) bits.push('<p><a href="' + esc(m.url) + '" target="_blank" rel="noopener" style="color:var(--accent)">View listing</a></p>');
+  bits.push('</div>');
+  return bits.join('');
+}
+
+async function renderWatchMatches() {
+  const box = document.getElementById('watch-matches');
+  try {
+    const res = await fetch(WATCH_RESULTS_URL, { cache: 'no-store' });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const matches = Array.isArray(data.matches) ? data.matches : [];
+    if (!matches.length) {
+      box.innerHTML = '<p class="tip">No matches yet — set your criteria above, activate, and send the settings to Ziggy.</p>' +
+        (data.updated ? '<p class="tip">Last hunt: ' + esc(data.updated) + '</p>' : '');
+      return;
+    }
+    box.innerHTML = (data.updated ? '<p class="tip">Last hunt: ' + esc(data.updated) + '</p>' : '') +
+      '<div class="match-grid">' + matches.map(matchCardHTML).join('') + '</div>';
+  } catch (err) {
+    box.innerHTML = '<p class="tip">No matches yet — set your criteria above, activate, and send the settings to Ziggy.</p>';
+  }
+}
+
+function renderWatch() {
+  renderWatchStatus();
+  renderWatchMatches();
+}
+
+function copyWatchSettings() {
+  const w = loadWatch();
+  if (!w) return;
+  const text = watchCopyText(w);
+  const done = () => { document.getElementById('watch-copied').textContent = 'Copied — paste it to Ziggy in chat.'; };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+  } else {
+    fallbackCopy(text, done);
+  }
+}
+function fallbackCopy(text, done) {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); done(); } catch (err) { /* clipboard unavailable */ }
+  document.body.removeChild(ta);
+}
+
+function wireWatch() {
+  const form = document.getElementById('watch-form');
+  if (!form) return;
+  form.addEventListener('submit', e => {
+    e.preventDefault();
+    const errEl = document.getElementById('watch-error');
+    errEl.textContent = '';
+    const w = readWatchForm();
+    if (!w.zips) { errEl.textContent = 'Enter at least one ZIP code.'; return; }
+    if (!(w.maxPrice > 0)) { errEl.textContent = 'Max price must be greater than 0.'; return; }
+    if (!(w.minCashFlow >= 0)) { errEl.textContent = 'Minimum cash flow can\'t be negative.'; return; }
+    w.activatedAt = new Date().toISOString();
+    saveWatch(w);
+    renderWatchStatus();
+  });
+  document.getElementById('watch-copy-btn').addEventListener('click', copyWatchSettings);
+  document.getElementById('watch-change-btn').addEventListener('click', () => {
+    const w = loadWatch();
+    if (w) fillWatchForm(w);
+    document.getElementById('watch-form-card').hidden = false;
+    document.getElementById('watch-active-card').hidden = true;
+  });
+  document.getElementById('watch-deactivate-btn').addEventListener('click', () => {
+    if (confirm('Deactivate Deal Watch? Your saved criteria will be cleared.')) {
+      clearWatch();
+      fillWatchForm({ zips: '34950, 34982, 34947', propType: 'multifamily', maxPrice: 400000, strategy: 'buy', loanType: 'conventional', minCashFlow: 200, interval: 'every3' });
+      renderWatchStatus();
+    }
+  });
+}
+
+/* Node-testable exports for the watch helpers (browser bundle unaffected). */
+if (typeof module !== 'undefined' && module.exports) {
+  Object.assign(module.exports, { watchCopyText, fmtMoney, WATCH_INTERVALS, WATCH_PROPTYPES, WATCH_STRATS, LS_WATCH, WATCH_RESULTS_URL });
+}
+
 function init() {
   document.querySelectorAll('[data-nav]').forEach(el => {
     el.addEventListener('click', e => { e.preventDefault(); go(el.dataset.nav); });
   });
-
   document.querySelectorAll('.provider').forEach(el => {
     el.addEventListener('click', () => {
       document.querySelectorAll('.provider').forEach(x => x.classList.remove('selected'));
@@ -1229,6 +1410,7 @@ function init() {
   setStrategy('buy');
   setLoanType('conventional', false);
   renderPhotoGallery();
+  wireWatch();
   route();
 }
 
