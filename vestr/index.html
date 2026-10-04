@@ -76,7 +76,7 @@
     <h1>Bring your own key</h1>
     <p class="lead" style="margin-bottom:20px">Pick a provider, paste a key. It stays in this browser's local storage — it is never sent to our servers. Every AI call goes straight from your browser to the provider.</p>
 
-    <div class="notice">New to API keys? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI keys</a> &middot; <a href="https://console.x.ai" target="_blank" rel="noopener">xAI console</a> &middot; <a href="https://console.anthropic.com" target="_blank" rel="noopener">Anthropic console</a>. Set a small spend limit (e.g. $5) on your provider account.</div>
+    <div class="notice">New to API keys? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI keys</a> &middot; <a href="https://console.x.ai" target="_blank" rel="noopener">xAI console</a> &middot; <a href="https://console.anthropic.com" target="_blank" rel="noopener">Anthropic console</a> &middot; <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>. Set a small spend limit (e.g. $5) on your provider account.</div>
     <div class="notice warn" id="anthropic-note" hidden>Heads up: Anthropic's API sometimes blocks direct browser calls (CORS). If the key test fails below, OpenAI or xAI will work fine — or run Anthropic through a tiny proxy.</div>
 
     <div class="card">
@@ -92,6 +92,10 @@
         <label class="provider" data-provider="anthropic">
           <input type="radio" name="provider" value="anthropic">
           <strong>Anthropic</strong><small>claude-haiku-4-5 default &middot; ~$0.02–0.05/run</small>
+        </label>
+        <label class="provider" data-provider="gemini">
+          <input type="radio" name="provider" value="gemini">
+          <strong>Gemini</strong><small>gemini-3.5-flash-lite default &middot; ~$0.02–0.05/run</small>
         </label>
       </div>
 
