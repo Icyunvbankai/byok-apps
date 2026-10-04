@@ -116,6 +116,21 @@
     </div>
 
     <div class="notice warn" id="no-key-notice" hidden>You haven't saved an API key yet — the math will still run, but the AI narrative needs one. <a href="#/setup" data-nav="setup">Set it up</a> (30 seconds).</div>
+    <div class="notice" id="shared-notice" hidden></div>
+
+    <div class="card no-print" id="link-intake-card">
+      <h3>Paste a listing link <span class="hint" style="font-weight:400;color:var(--muted-fg)">(Zillow, Redfin, Realtor.com, Homes.com, Compass, LoopNet, Crexi)</span></h3>
+      <div class="url-row">
+        <input id="f-listingurl" type="url" placeholder="https://www.zillow.com/homedetails/…" autocomplete="off" spellcheck="false" style="flex:1">
+        <button type="button" class="btn" id="listingurl-pull">Pull listing</button>
+      </div>
+      <p class="tip" id="listingurl-msg" role="status"></p>
+      <div id="link-intel-links" style="margin-top:8px"></div>
+      <p id="link-ziggy-row" hidden style="margin-top:8px">
+        <button type="button" class="btn secondary" id="listingurl-ziggy">Ask Ziggy to pull the full listing</button>
+        <span class="tip" id="listingurl-ziggy-hint"></span>
+      </p>
+    </div>
 
     <div class="strat-tabs no-print" role="tablist" aria-label="Strategy">
       <button type="button" class="strat-tab on" data-strategy="buy" role="tab" aria-selected="true">Buy &amp; Hold</button>
