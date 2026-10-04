@@ -1185,10 +1185,11 @@ function renderWatchStatus() {
   }
 }
 
-function matchCardHTML(m) {
+function matchCardHTML(m, isNew) {
   const bits = [];
   bits.push('<div class="match-card">');
   bits.push('<div class="match-head"><strong>' + esc(m.address || 'Address not listed') + '</strong>' +
+    (isNew ? ' <span class="new-badge">NEW</span>' : '') +
     (m.price != null ? '<span class="match-price">' + fmtMoney(m.price) + '</span>' : '') + '</div>');
   const meta = [];
   if (m.type || m.units) meta.push(esc([m.type, m.units].filter(Boolean).join(' · ')));
@@ -1204,20 +1205,70 @@ function matchCardHTML(m) {
   return bits.join('');
 }
 
+const WATCH_SEEN_KEY = 'deallens_watch_seen';
+function getWatchSeen() {
+  const v = parseInt(localStorage.getItem(WATCH_SEEN_KEY) || '0', 10);
+  return isFinite(v) ? v : 0;
+}
+function setWatchSeen(ts) {
+  try { localStorage.setItem(WATCH_SEEN_KEY, String(ts)); } catch (err) { /* storage unavailable */ }
+}
+function matchIsNew(m, seen) {
+  if (!m || !m.found) return false;
+  const t = Date.parse(m.found);
+  return isFinite(t) && t > seen;
+}
+async function fetchWatchResults() {
+  const res = await fetch(WATCH_RESULTS_URL, { cache: 'no-store' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  const data = await res.json();
+  return data;
+}
+function setWatchNavPill(count) {
+  const btn = document.querySelector('[data-nav="watch"]');
+  if (!btn) return;
+  let pill = btn.querySelector('.new-pill');
+  if (count > 0) {
+    if (!pill) {
+      pill = document.createElement('span');
+      pill.className = 'new-pill';
+      btn.appendChild(pill);
+    }
+    pill.textContent = count;
+    pill.hidden = false;
+  } else if (pill) {
+    pill.hidden = true;
+  }
+}
+// Called on app start: flags unseen matches on the Deal Watch nav button.
+async function updateWatchBadge() {
+  try {
+    const data = await fetchWatchResults();
+    const matches = Array.isArray(data.matches) ? data.matches : [];
+    const seen = getWatchSeen();
+    setWatchNavPill(matches.filter(m => matchIsNew(m, seen)).length);
+  } catch (err) { /* no results yet — leave nav clean */ }
+}
+
 async function renderWatchMatches() {
   const box = document.getElementById('watch-matches');
   try {
-    const res = await fetch(WATCH_RESULTS_URL, { cache: 'no-store' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
+    const data = await fetchWatchResults();
     const matches = Array.isArray(data.matches) ? data.matches : [];
+    const seen = getWatchSeen();
     if (!matches.length) {
       box.innerHTML = '<p class="tip">No matches yet — set your criteria above, activate, and send the settings to Ziggy.</p>' +
         (data.updated ? '<p class="tip">Last hunt: ' + esc(data.updated) + '</p>' : '');
+      setWatchNavPill(0);
       return;
     }
-    box.innerHTML = (data.updated ? '<p class="tip">Last hunt: ' + esc(data.updated) + '</p>' : '') +
-      '<div class="match-grid">' + matches.map(matchCardHTML).join('') + '</div>';
+    const newCount = matches.filter(m => matchIsNew(m, seen)).length;
+    box.innerHTML = (data.updated ? '<p class="tip">Last hunt: ' + esc(data.updated) +
+        (newCount ? ' · <strong>' + newCount + ' new since your last visit</strong>' : '') + '</p>' : '') +
+      '<div class="match-grid">' + matches.map(m => matchCardHTML(m, matchIsNew(m, seen))).join('') + '</div>';
+    // User has now seen them: mark all as seen and clear the nav pill.
+    setWatchSeen(Date.now());
+    setWatchNavPill(0);
   } catch (err) {
     box.innerHTML = '<p class="tip">No matches yet — set your criteria above, activate, and send the settings to Ziggy.</p>';
   }
@@ -1289,6 +1340,7 @@ function init() {
   document.querySelectorAll('[data-nav]').forEach(el => {
     el.addEventListener('click', e => { e.preventDefault(); go(el.dataset.nav); });
   });
+  updateWatchBadge();
   document.querySelectorAll('.provider').forEach(el => {
     el.addEventListener('click', () => {
       document.querySelectorAll('.provider').forEach(x => x.classList.remove('selected'));
