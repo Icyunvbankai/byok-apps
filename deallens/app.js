@@ -752,6 +752,17 @@ async function runAgentTests() {
   assert(pb12.beds === 3 && pb12.baths === 2 && pb12.sqft === 1400 && pb12.year === 1985, 'A12 text field fallbacks');
   assert(Object.keys(parseListingHtml('')).length === 0, 'A12 empty input → empty object');
   assert(Object.keys(parseListingHtml('<html><body>hello</body></html>')).length === 0, 'A12 no fields → empty object');
+  // decimal baths must not become 25 (parseInt bug guard); embedded payload fields
+  const p25 = parseListingHtml('<html><body><div>2.5 baths, 1,800 ft²</div><div>Last sold for $310,000 on March 5, 2021</div></body></html>');
+  assert(p25.baths === 2.5, 'A12 decimal baths, got ' + p25.baths);
+  assert(p25.sqft === 1800, 'A12 ft² sqft, got ' + p25.sqft);
+  assert(p25.lastPrice === 310000, 'A12 last sale price, got ' + p25.lastPrice);
+  assert(p25.lastDate === 'March 5, 2021', 'A12 last sale date, got ' + p25.lastDate);
+  const embHtml = '<html><head><script>window.__NEXT_DATA__={"props":{"pageProps":{"listing":{"bedrooms":4,"bathrooms":3,"yearBuilt":2005,"taxAnnualAmount":5200,"mlsNumber":"RX-12345"}}}}</script></head><body></body></html>';
+  const pe12 = parseListingHtml(embHtml);
+  assert(pe12.beds === 4 && pe12.baths === 3 && pe12.year === 2005, 'A12 embedded beds/baths/year');
+  assert(pe12.taxA === 5200, 'A12 embedded taxes, got ' + pe12.taxA);
+  assert(pe12.mls === 'RX-12345', 'A12 embedded MLS#, got ' + pe12.mls);
 
   global.fetch = realFetch;
   console.log('Agent-loop tests: all passed (10 groups).');
@@ -2357,6 +2368,19 @@ function parseListingHtml(html) {
     const pm = /"price"\s*:\s*"?(\d{5,8})"?/.exec(html);
     if (pm) out.price = num(pm[1]);
   }
+  // 2b. Embedded data fields most listing sites include in their page payloads
+  const emb = re => { const mm = re.exec(html); return mm ? mm[1] : null; };
+  const embNum = (re, min, max) => {
+    const v = emb(re); if (v == null) return 0;
+    const n = parseFloat(v); return (isFinite(n) && n >= min && n <= max) ? n : 0;
+  };
+  if (!out.beds) { const b = embNum(/"bedrooms"\s*:\s*(\d{1,2})/, 0, 30); if (b) out.beds = b; }
+  if (out.baths == null) { const b = embNum(/"bathrooms"\s*:\s*(\d{1,2}(?:\.\d+)?)/, 0, 30); if (b) out.baths = b; }
+  if (!out.sqft) { const s = embNum(/"(?:livingAreaValue|livingArea|sqft|squareFeet)"\s*:\s*(\d{3,6})/, 200, 50000); if (s) out.sqft = s; }
+  if (!out.year) { const y = embNum(/"yearBuilt"\s*:\s*(\d{4})/, 1700, 2030); if (y) out.year = y; }
+  if (!out.taxA) { const t = embNum(/"(?:taxAnnualAmount|annualTax|taxAmount)"\s*:\s*(\d{3,7})/, 100, 200000); if (t) out.taxA = t; }
+  if (!out.hoaM) { const h = emb(/"(?:hoaFee|hoa|hoaMonthly)"\s*:\s*"?(\d{1,5})"?/); if (h) out.hoaM = +h; }
+  if (!out.mls) { const ml = emb(/"mls(?:Number|Id|_id)"\s*:\s*"([A-Z0-9-]+)"/i); if (ml) out.mls = ml.toUpperCase(); }
   // 3. Visible text fallbacks
   const text = html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
@@ -2369,19 +2393,25 @@ function parseListingHtml(html) {
   };
   if (!out.price) { const p = grab(/\$ ?([\d,]{4,})/, 10000, 100000000); if (p) out.price = p; }
   if (!out.beds) { const b = grab(/(\d+)\s*(?:bd|beds?|bedrooms?)\b/i, 0, 30); if (b) out.beds = b; }
-  const baths = grab(/(\d+(?:\.\d+)?)\s*(?:ba|baths?|bathrooms?)\b/i, 0, 30);
-  if (baths) out.baths = baths;
-  if (!out.sqft) { const s = grab(/([\d,]+)\s*(?:sq\.?\s*ft|sqft|square feet)\b/i, 200, 50000); if (s) out.sqft = s; }
-  const tax = grab(/(?:property tax(?:es)?|annual tax)[^$]{0,50}\$([\d,]+)/i, 100, 200000);
-  if (tax) out.taxA = tax;
-  const hoa = grab(/HOA[^$]{0,50}\$([\d,]+)/i, 0, 10000);
-  if (hoa) out.hoaM = hoa;
-  const mls = /MLS\s*#?\s*:?\s*([A-Z0-9][A-Z0-9-]{3,20})/i.exec(text);
-  if (mls) out.mls = mls[1].toUpperCase();
-  const yr = grab(/(?:year built|built in|built)[^0-9]{0,12}(\d{4})/i, 1700, 2030);
-  if (yr) out.year = yr;
+  if (out.baths == null) {
+    const bm = /(\d+(?:\.\d+)?)\s*(?:ba|baths?|bathrooms?)\b/i.exec(text);
+    if (bm) { const bf = parseFloat(bm[1]); if (isFinite(bf) && bf > 0 && bf <= 30) out.baths = bf; }
+  }
+  if (!out.sqft) { const s = grab(/([\d,]+)\s*(?:sq\.?\s*ft|sqft|square feet|ft2|ft²|\bSF\b)/i, 200, 50000); if (s) out.sqft = s; }
+  if (!out.taxA) {
+    const tax = grab(/(?:property tax(?:es)?|annual tax)[^$]{0,50}\$([\d,]+)/i, 100, 200000);
+    if (tax) out.taxA = tax;
+  }
+  if (!out.hoaM) { const hoa = grab(/HOA[^$]{0,50}\$([\d,]+)/i, 0, 10000); if (hoa) out.hoaM = hoa; }
+  if (!out.mls) { const mls = /MLS\s*#?\s*:?\s*([A-Z0-9][A-Z0-9-]{3,20})/i.exec(text); if (mls) out.mls = mls[1].toUpperCase(); }
+  if (!out.year) { const yr = grab(/(?:year built|built in|built)[^0-9]{0,12}(\d{4})/i, 1700, 2030); if (yr) out.year = yr; }
   const rent = grab(/(?:rent(?:al)? (?:z)?estimate|estimated rent)[^$]{0,50}\$([\d,]+)/i, 100, 100000);
   if (rent) out.rent = rent;
+  // last sale (price + date) — shown on most listing pages
+  const lsp = /last sold[^$]{0,60}\$([\d,]+)/i.exec(text) || /sold for \$([\d,]+)/i.exec(text);
+  if (lsp) { const n = num(lsp[1]); if (n >= 10000) out.lastPrice = n; }
+  const lsd = /(?:last sold|sold on)[^.!?]{0,60}?([A-Z][a-z]+ \d{1,2}, \d{4})/i.exec(text);
+  if (lsd) out.lastDate = lsd[1];
   const ag = /(?:listed by|listing courtesy of|listing agent)\s*:?\s*([A-Z][A-Za-z.'&\- ]{2,50}?)(?:\s{2,}|,?\s*(?:\(|\d{3}[\s\-.]))/i.exec(text);
   if (ag) out.realtor = ag[1].trim();
   return out;
@@ -2421,6 +2451,12 @@ function applyNativeListingData(d) {
   }
   if (set('f-sqft', d.sqft)) bits.push((+d.sqft).toLocaleString('en-US') + ' sqft');
   if (set('f-yearbuilt', d.year)) bits.push('Built ' + d.year);
+  if (set('f-lastsaleprice', d.lastPrice)) bits.push('Last sold $' + (+d.lastPrice).toLocaleString('en-US'));
+  if (d.lastDate) {
+    const lde = document.getElementById('f-lastsaledate');
+    const iso = (l => { const m = /([A-Z][a-z]+) (\d{1,2}), (\d{4})/.exec(l); if (!m) return ''; const mo = { January: '01', February: '02', March: '03', April: '04', May: '05', June: '06', July: '07', August: '08', September: '09', October: '10', November: '11', December: '12' }[m[1]]; return mo ? m[3] + '-' + mo + '-' + m[2].padStart(2, '0') : ''; })(d.lastDate);
+    if (lde && iso) { lde.value = iso; bits.push('on ' + d.lastDate); }
+  }
   const notes = [];
   if (d.mls) { notes.push('MLS#: ' + d.mls); bits.push('MLS ' + d.mls); }
   if (d.realtor) notes.push('Listing agent: ' + d.realtor);
@@ -2434,7 +2470,15 @@ function applyNativeListingData(d) {
     show('The page loaded but I couldn\u2019t pull the fields — the site may be blocking readers. Enter price + rent manually or use \u201cPull full listing via Ziggy\u201d.');
     return;
   }
-  show('Pulled from the listing page: ' + bits.join(' · ') + ' — running the analysis\u2026');
+  const missing = [];
+  if (!d.rent) missing.push('rent');
+  if (!d.taxA) missing.push('taxes');
+  if (!d.sqft) missing.push('sqft');
+  if (!d.year) missing.push('year built');
+  if (!d.mls) missing.push('MLS#');
+  show('Pulled from the listing page: ' + bits.join(' · ')
+    + (missing.length ? ' — couldn\u2019t find on the page: ' + missing.join(', ') + '.' : '')
+    + ' Running the analysis\u2026');
   setStrategy(agentState.strategy || 'buy');
   setLoanType(agentState.loan || 'conventional', true);
   setTimeout(() => {
