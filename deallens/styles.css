@@ -166,6 +166,8 @@ details.assume .body { padding: 0 12px 12px; }
   padding: 12px 16px; font-size: 0.9rem; color: var(--muted-fg); margin-bottom: 16px;
 }
 .notice.warn { border-left-color: var(--warn); background: rgba(245, 158, 11, 0.06); }
+/* RentCast usage: amber when running low on the free tier */
+.rc-low { color: var(--warn, #f59e0b); font-weight: 600; }
 .notice a { color: var(--accent); }
 
 .error { color: var(--danger); font-size: 0.9rem; margin-top: 8px; }
