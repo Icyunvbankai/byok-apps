@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CounterOffer — Know what your offer is really worth before you sign</title>
+<meta name="description" content="BYOK offer-letter analyzer. Your API key, your compute — comp breakdown, vesting math, negotiation leverage, and counter-offer drafts.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header no-print">
+  <div class="header-inner">
+    <a class="logo" href="#/" data-nav="landing">Counter<span>Offer</span></a>
+    <nav class="nav" aria-label="Main">
+      <button data-nav="new">+ New offer</button>
+      <button data-nav="history">History</button>
+      <button data-nav="setup">API Key</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ============ LANDING ============ -->
+  <section class="view" id="view-landing" aria-label="Welcome">
+    <div class="hero">
+      <span class="kicker">BYOK &middot; your key, your compute</span>
+      <h1>Your offer letter is a starting bid.</h1>
+      <p class="lead">Paste the letter, get a plain-English comp breakdown — base, bonus, equity, vesting, benefits — plus market positioning, the highest-leverage things to negotiate, and ready-to-send counter-offer emails. You bring your own AI key, so analysis costs you pennies.</p>
+      <p style="margin-top:8px">
+        <button class="btn" data-nav="new">Analyze my offer</button>
+        <button class="btn secondary" data-nav="setup" style="margin-left:8px">Set up API key</button>
+      </p>
+    </div>
+
+    <div class="steps">
+      <div class="step"><span class="n">1</span><h3>Paste the letter</h3><p>Offer text plus a short context form: role, level, location, deadline. Nothing leaves your browser except the AI calls on your own key.</p></div>
+      <div class="step"><span class="n">2</span><h3>We do the math</h3><p>First-year total, 4-year total, year-by-year vesting — computed deterministically in code. The AI narrates and judges; it never does your arithmetic.</p></div>
+      <div class="step"><span class="n">3</span><h3>Negotiate with leverage</h3><p>Ranked asks by dollar impact, objection handling, and counter-offer emails in collaborative and firm tones — with your numbers pre-filled.</p></div>
+    </div>
+
+    <div class="sample-strip" aria-label="Sample output">
+      <div class="stat"><div class="v">$205k</div><div class="l">first-year total</div></div>
+      <div class="stat"><div class="v">$790k</div><div class="l">4-year total</div></div>
+      <div class="stat"><div class="v">$17,083</div><div class="l">monthly equivalent</div></div>
+      <div class="stat"><div class="v">$29</div><div class="l">one-time price</div></div>
+    </div>
+
+    <div class="card">
+      <h3>How BYOK pricing works</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem">CounterOffer runs on <strong style="color:var(--fg)">your</strong> OpenAI, xAI, or Anthropic key — pasted once, stored only in this browser, never on our servers. A full offer analysis costs roughly <strong style="color:var(--fg)">$0.02–0.08</strong> of your own API credit. We charge for the negotiation engine, not the tokens.</p>
+      <p style="margin-top:12px"><button class="btn secondary" data-nav="pricing">See plans</button></p>
+    </div>
+
+    <div class="card">
+      <h3>FAQ</h3>
+      <p style="font-size:.92rem;margin-bottom:10px"><strong>Do I need an API key?</strong><br><span style="color:var(--muted-fg)">Yes — that's what makes it cheap for you. A key takes 30 seconds to create and a full analysis costs a few cents of your own credit, instead of us marking up inference 100x.</span></p>
+      <p style="font-size:.92rem;margin-bottom:10px"><strong>Is this legal advice?</strong><br><span style="color:var(--muted-fg)">No. CounterOffer is a negotiation coach, not a lawyer. It flags clauses worth asking about — non-competes, IP assignment, arbitration — but have an employment attorney review anything binding.</span></p>
+      <p style="font-size:.92rem"><strong>What if my letter is missing numbers?</strong><br><span style="color:var(--muted-fg)">Anything the letter doesn't state is labeled "not specified — ask about this." We never invent comp figures.</span></p>
+    </div>
+  </section>
+
+  <!-- ============ SETUP ============ -->
+  <section class="view" id="view-setup" aria-label="API key setup">
+    <h1>Bring your own key</h1>
+    <p class="lead" style="margin-bottom:20px">Pick a provider, paste a key. It stays in this browser's local storage — it is never sent to our servers. Every AI call goes straight from your browser to the provider.</p>
+
+    <div class="notice">New to API keys? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI keys</a> &middot; <a href="https://console.x.ai" target="_blank" rel="noopener">xAI console</a> &middot; <a href="https://console.anthropic.com" target="_blank" rel="noopener">Anthropic console</a>. Set a small spend limit (e.g. $5) on your provider account.</div>
+    <div class="notice warn" id="anthropic-note" hidden>Heads up: Anthropic's API sometimes blocks direct browser calls (CORS). If the key test fails below, OpenAI or xAI will work fine — or run Anthropic through a tiny proxy.</div>
+
+    <div class="card">
+      <div class="provider-cards" role="radiogroup" aria-label="Provider">
+        <label class="provider" data-provider="openai">
+          <input type="radio" name="provider" value="openai" checked>
+          <strong>OpenAI</strong><small>gpt-4o-mini default &middot; ~$0.02–0.05/offer</small>
+        </label>
+        <label class="provider" data-provider="xai">
+          <input type="radio" name="provider" value="xai">
+          <strong>xAI</strong><small>grok-3-mini default &middot; ~$0.02–0.05/offer</small>
+        </label>
+        <label class="provider" data-provider="anthropic">
+          <input type="radio" name="provider" value="anthropic">
+          <strong>Anthropic</strong><small>haiku default &middot; ~$0.03–0.08/offer</small>
+        </label>
+      </div>
+
+      <div class="field">
+        <label for="api-key">API key</label>
+        <input type="password" id="api-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+        <p class="tip">Stored only in this browser (localStorage). Clear it anytime below.</p>
+      </div>
+
+      <div class="field">
+        <label for="model">Model <span class="hint">(editable — use what you like)</span></label>
+        <input type="text" id="model" value="gpt-4o-mini" spellcheck="false">
+        <p class="tip" id="model-hint">Mini-class models are plenty for extraction and coaching copy, at cents per offer.</p>
+      </div>
+
+      <div class="field">
+        <label class="compare-check"><input type="checkbox" id="flagship-toggle"> Use flagship model for sharper negotiation copy <span class="hint">(costs more per offer)</span></label>
+      </div>
+
+      <p>
+        <button class="btn" id="test-key-btn">Test key</button>
+        <button class="btn secondary" id="save-key-btn" style="margin-left:8px">Save key</button>
+      </p>
+      <p class="error" id="key-error" role="alert"></p>
+      <p class="success" id="key-success" role="status"></p>
+
+      <p style="margin-top:16px"><button class="btn danger-ghost" id="clear-key-btn">Remove saved key</button></p>
+      <p class="tip" id="spend-note" style="margin-top:12px"></p>
+    </div>
+  </section>
+
+  <!-- ============ NEW OFFER ============ -->
+  <section class="view" id="view-new" aria-label="New offer">
+    <h1>New offer analysis</h1>
+    <p class="lead" style="margin-bottom:20px">Paste the offer letter, add context. The math runs in code; the AI extracts, positions, and drafts — on your key.</p>
+
+    <div class="notice warn" id="no-key-notice" hidden>You haven't saved an API key yet — the comp math needs extracted numbers from the AI, so set one up first. <a href="#/setup" data-nav="setup">Set it up</a> (30 seconds).</div>
+
+    <form id="offer-form" novalidate>
+      <div class="card">
+        <h3>Offer letter</h3>
+        <div class="field">
+          <label for="offer-letter">Paste the full letter or email <span class="hint">(plain text — names and companies stay in your browser)</span></label>
+          <textarea id="offer-letter" rows="10" placeholder="Dear Alex,&#10;&#10;We are pleased to offer you the position of Senior Software Engineer..."></textarea>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Context <span class="hint" style="font-weight:400">(sharpens market positioning)</span></h3>
+        <div class="grid2">
+          <div class="field"><label for="c-role">Role title</label><input id="c-role" placeholder="Senior Software Engineer"></div>
+          <div class="field"><label for="c-level">Level / seniority</label>
+            <select id="c-level">
+              <option value="entry">Entry (0–2 yrs)</option>
+              <option value="mid" selected>Mid (2–5 yrs)</option>
+              <option value="senior">Senior (5–8 yrs)</option>
+              <option value="staff">Staff / Principal (8+ yrs)</option>
+              <option value="manager">Manager</option>
+              <option value="exec">Director / Exec</option>
+            </select>
+          </div>
+          <div class="field"><label for="c-stage">Company stage</label>
+            <select id="c-stage">
+              <option value="startup">Startup (seed–Series B)</option>
+              <option value="growth" selected>Growth (Series C+ / late-stage)</option>
+              <option value="public">Public company</option>
+              <option value="nonprofit">Nonprofit / gov</option>
+            </select>
+          </div>
+          <div class="field"><label for="c-location">City or remote</label><input id="c-location" placeholder="Austin, TX (or Remote)"></div>
+          <div class="field"><label for="c-yoe">Years of experience</label><input id="c-yoe" type="number" min="0" max="50" placeholder="6"></div>
+          <div class="field"><label for="c-current">Current total comp ($/yr) <span class="hint">(optional)</span></label><input id="c-current" type="number" min="0" placeholder="175000"></div>
+          <div class="field"><label for="c-deadline">Offer deadline <span class="hint">(for the countdown)</span></label><input id="c-deadline" type="date"></div>
+        </div>
+      </div>
+
+      <p><button type="submit" class="btn block" id="analyze-btn">Analyze this offer</button></p>
+      <p class="error" id="form-error" role="alert"></p>
+      <p class="tip">This runs 3 AI calls on your key (extract → analyze → drafts), roughly $0.02–0.08 total on mini-class models.</p>
+    </form>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section class="view" id="view-results" aria-label="Results">
+    <div id="results-content"></div>
+    <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="to-drafts-btn">Counter-offer drafts</button>
+      <button class="btn secondary" id="print-btn">Export PDF (print)</button>
+      <button class="btn secondary" data-nav="new">New offer</button>
+      <button class="btn secondary" data-nav="history">History</button>
+    </p>
+  </section>
+
+  <!-- ============ DRAFTS ============ -->
+  <section class="view" id="view-drafts" aria-label="Counter-offer drafts">
+    <h1>Counter-offer drafts</h1>
+    <p class="lead" style="margin-bottom:16px">Numbers pre-filled from your analysis. Copy, tweak, send. Never adversarial, never bluffing.</p>
+    <div class="tabs no-print" role="tablist" aria-label="Draft tones">
+      <button class="tab active" data-draft="collaborative" role="tab">Collaborative</button>
+      <button class="tab" data-draft="firm" role="tab">Firm</button>
+      <button class="tab" data-draft="extension" role="tab">Extension request</button>
+      <button class="tab" data-draft="phone" role="tab">Phone script</button>
+    </div>
+    <div id="drafts-content"></div>
+    <p class="no-print" style="margin-top:16px"><button class="btn secondary" data-nav="results" id="back-results-btn">Back to analysis</button></p>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section class="view" id="view-history" aria-label="History">
+    <h1>Saved offers</h1>
+    <p class="lead" style="margin-bottom:16px">Everything lives in this browser. Re-open any analysis, or export your data.</p>
+    <p class="no-print" style="margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn secondary" id="export-btn">Export JSON</button>
+      <button class="btn secondary" id="import-btn">Import JSON</button>
+      <input type="file" id="import-file" accept="application/json" hidden>
+    </p>
+    <div id="history-list"></div>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section class="view" id="view-pricing" aria-label="Pricing">
+    <h1>Pricing</h1>
+    <p class="lead" style="margin-bottom:20px">A 5% bump on a $150k offer is $7,500 a year. This costs less than half a percent of the raise you're about to ask for.</p>
+    <div class="steps">
+      <div class="step"><h3>Single offer</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$29<span style="font-size:.9rem;color:var(--muted-fg)"> one-time</span></p><p>Full analysis, negotiation plan, all email drafts. You decide in two weeks — a subscription would be silly.</p></div>
+      <div class="step"><h3>Career mode</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$49<span style="font-size:.9rem;color:var(--muted-fg)">/mo</span></p><p>Unlimited offers, interview prep, raise scripts, annual comp reviews. <span style="color:var(--muted-fg)">Coming soon.</span></p></div>
+      <div class="step"><h3>Key cost</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">~$0.05<span style="font-size:.9rem;color:var(--muted-fg)">/offer</span></p><p>AI compute runs on your own API key — cents per analysis, billed by your provider.</p></div>
+    </div>
+    <div class="notice">Billing isn't wired in this MVP build — checkout arrives with launch. The app is fully usable now with your own key.</div>
+  </section>
+</main>
+
+<footer class="site no-print">
+  <p>CounterOffer is a negotiation coaching tool — <strong>not legal, tax, or financial advice</strong>. It flags clauses worth asking about, but have an employment attorney review anything binding before you sign. Verify every number against your actual letter. Your API key never leaves this browser.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
