@@ -136,21 +136,51 @@
     <div class="notice" id="shared-notice" hidden></div>
 
     <div class="card no-print" id="link-intake-card">
-      <h3>Paste a listing link <span class="hint" style="font-weight:400;color:var(--muted-fg)">(Zillow, Redfin, Realtor.com, Homes.com, Compass, LoopNet, Crexi)</span></h3>
+      <h3>DealLens agent <span class="hint" style="font-weight:400;color:var(--muted-fg)">— drop a link, pick loan + strategy, done</span></h3>
       <div class="url-row">
         <input id="f-listingurl" type="url" placeholder="https://www.zillow.com/homedetails/…" autocomplete="off" spellcheck="false" style="flex:1">
-        <button type="button" class="btn" id="listingurl-pull">Pull listing</button>
+        <button type="button" class="btn" id="listingurl-pull">Parse</button>
       </div>
       <p class="tip" id="listingurl-msg" role="status"></p>
-      <p id="link-rcpull-row" hidden style="margin-top:8px">
-        <button type="button" class="btn" id="listingurl-rcpull">Pull full info via RentCast</button>
-        <span class="tip" id="listingurl-rcpull-sub"></span>
-      </p>
-      <div id="link-intel-links" style="margin-top:8px"></div>
-      <p id="link-ziggy-row" hidden style="margin-top:8px">
-        <button type="button" class="btn secondary" id="listingurl-ziggy">Ask Ziggy to pull the full listing</button>
-        <span class="tip" id="listingurl-ziggy-hint"></span>
-      </p>
+
+      <div id="agent-flow" hidden>
+        <p class="agent-head" id="agent-head"></p>
+        <p class="tip" id="agent-found"></p>
+
+        <div class="field">
+          <label>Loan type</label>
+          <div class="radio-group" id="agent-loans" role="radiogroup" aria-label="Loan type"></div>
+        </div>
+        <div class="field">
+          <label>Strategy</label>
+          <div class="radio-group" id="agent-strats" role="radiogroup" aria-label="Strategy"></div>
+        </div>
+
+        <p class="tip" style="margin-top:4px">Price + rent are the only two things no free source has — everything else the agent gathers.</p>
+        <div class="grid2" id="agent-inputs-buy">
+          <div class="field"><label for="a-price">Purchase price ($)</label><input id="a-price" type="number" min="1" placeholder="200000"></div>
+          <div class="field"><label for="a-rent">Monthly rent ($)</label><input id="a-rent" type="number" min="0" placeholder="1800"></div>
+        </div>
+        <div class="grid2" id="agent-inputs-flip" hidden>
+          <div class="field"><label for="a-fprice">Purchase price ($)</label><input id="a-fprice" type="number" min="1" placeholder="200000"></div>
+          <div class="field"><label for="a-arv">After-repair value ($)</label><input id="a-arv" type="number" min="0" placeholder="330000"></div>
+          <div class="field"><label for="a-rehab">Rehab budget ($)</label><input id="a-rehab" type="number" min="0" placeholder="60000"></div>
+        </div>
+        <div class="grid2" id="agent-inputs-build" hidden>
+          <div class="field"><label for="a-land">Land cost ($)</label><input id="a-land" type="number" min="0" placeholder="60000"></div>
+          <div class="field"><label for="a-buildcost">Build cost ($)</label><input id="a-buildcost" type="number" min="0" placeholder="220000"></div>
+          <div class="field"><label for="a-barv">Finished value — ARV ($)</label><input id="a-barv" type="number" min="0" placeholder="350000"></div>
+        </div>
+
+        <p><button type="button" class="btn block" id="agent-run">Run analysis</button></p>
+        <p class="error" id="agent-error" role="alert"></p>
+
+        <div id="agent-intel" style="margin-top:8px"></div>
+        <p id="agent-ziggy-row" hidden style="margin-top:8px">
+          <button type="button" class="btn secondary" id="agent-ziggy">Ask Ziggy to pull the full listing</button>
+          <span class="tip" id="agent-ziggy-hint"></span>
+        </p>
+      </div>
     </div>
 
     <div class="strat-tabs no-print" role="tablist" aria-label="Strategy">
@@ -256,6 +286,8 @@
       </div>
 
       <div class="field"><label for="f-notes">Notes <span class="hint">(optional — neighborhood, listing quirks, anything the AI should weigh)</span></label><input id="f-notes" placeholder="Near university, HOA caps rentals at 20%..."></div>
+      <input type="hidden" id="f-lat" value="">
+      <input type="hidden" id="f-lng" value="">
 
       <p><button type="submit" class="btn block" id="analyze-btn">Run analysis</button></p>
       <p class="error" id="form-error" role="alert"></p>
