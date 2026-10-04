@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DealLens — Underwrite any rental deal in 10 minutes</title>
+<meta name="description" content="BYOK rental deal analyzer. Your API key, your compute — pro-grade underwriting with zero inference cost to us.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header no-print">
+  <div class="header-inner">
+    <a class="logo" href="#/" data-nav="landing">Deal<span>Lens</span></a>
+    <nav class="nav" aria-label="Main">
+      <button data-nav="new">+ Analyze</button>
+      <button data-nav="history">History</button>
+      <button data-nav="setup">API Key</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ============ LANDING ============ -->
+  <section class="view" id="view-landing" aria-label="Welcome">
+    <div class="hero">
+      <span class="kicker">BYOK &middot; your key, your compute</span>
+      <h1>Stop guessing on rentals.</h1>
+      <p class="lead">Paste a listing, get a pro-grade underwriting — cash flow, cap rate, risk flags, and a suggested offer — in about ten minutes. You bring your own AI key, so analysis costs you pennies.</p>
+      <p style="margin-top:8px">
+        <button class="btn" data-nav="new">Analyze your first deal</button>
+        <button class="btn secondary" data-nav="setup" style="margin-left:8px">Set up API key</button>
+      </p>
+    </div>
+
+    <div class="steps">
+      <div class="step"><span class="n">1</span><h3>Enter the deal</h3><p>Price, rent, taxes, insurance, financing — guided form with sane defaults. No scraping games, no missing fields.</p></div>
+      <div class="step"><span class="n">2</span><h3>We do the math</h3><p>Every ratio — cap rate, cash-on-cash, DSCR — computed deterministically in code. The AI narrates; it never does your arithmetic.</p></div>
+      <div class="step"><span class="n">3</span><h3>Get the verdict</h3><p>Deal score 0–100, risk flags, and an offer thesis you can take to a lender. Save it, compare it, print it.</p></div>
+    </div>
+
+    <div class="sample-strip" aria-label="Sample output">
+      <div class="stat"><div class="v">$312</div><div class="l">monthly cash flow</div></div>
+      <div class="stat"><div class="v">7.4%</div><div class="l">cap rate</div></div>
+      <div class="stat"><div class="v">11.2%</div><div class="l">cash-on-cash</div></div>
+      <div class="stat"><div class="v">84</div><div class="l">deal score</div></div>
+    </div>
+
+    <div class="card">
+      <h3>How BYOK pricing works</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem">DealLens runs on <strong style="color:var(--fg)">your</strong> OpenAI, xAI, or Anthropic key — pasted once, stored only in this browser, never on our servers. A full analysis costs roughly <strong style="color:var(--fg)">$0.01–0.05</strong> of your own API credit. We charge for the underwriting engine, not the tokens.</p>
+      <p style="margin-top:12px"><button class="btn secondary" data-nav="pricing">See plans</button></p>
+    </div>
+  </section>
+
+  <!-- ============ SETUP ============ -->
+  <section class="view" id="view-setup" aria-label="API key setup">
+    <h1>Bring your own key</h1>
+    <p class="lead" style="margin-bottom:20px">Pick a provider, paste a key. It stays in this browser's local storage — it is never sent to our servers. Every AI call goes straight from your browser to the provider.</p>
+
+    <div class="notice">New to API keys? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI keys</a> &middot; <a href="https://console.x.ai" target="_blank" rel="noopener">xAI console</a> &middot; <a href="https://console.anthropic.com" target="_blank" rel="noopener">Anthropic console</a>. Set a small spend limit (e.g. $5) on your provider account.</div>
+    <div class="notice warn" id="anthropic-note" hidden>Heads up: Anthropic's API sometimes blocks direct browser calls (CORS). If the key test fails below, OpenAI or xAI will work fine — or run Anthropic through a tiny proxy.</div>
+
+    <div class="card">
+      <div class="provider-cards" role="radiogroup" aria-label="Provider">
+        <label class="provider" data-provider="openai">
+          <input type="radio" name="provider" value="openai" checked>
+          <strong>OpenAI</strong><small>gpt-4o-mini default &middot; ~$0.01/analysis</small>
+        </label>
+        <label class="provider" data-provider="xai">
+          <input type="radio" name="provider" value="xai">
+          <strong>xAI</strong><small>grok-3-mini default &middot; ~$0.01/analysis</small>
+        </label>
+        <label class="provider" data-provider="anthropic">
+          <input type="radio" name="provider" value="anthropic">
+          <strong>Anthropic</strong><small>haiku default &middot; ~$0.02/analysis</small>
+        </label>
+      </div>
+
+      <div class="field">
+        <label for="api-key">API key</label>
+        <input type="password" id="api-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+        <p class="tip">Stored only in this browser (localStorage). Clear it anytime in Settings below.</p>
+      </div>
+
+      <div class="field">
+        <label for="model">Model <span class="hint">(editable — use what you like)</span></label>
+        <input type="text" id="model" value="gpt-4o-mini" spellcheck="false">
+        <p class="tip" id="model-hint">Mini-class models are plenty for structured underwriting and cost fractions of a cent per analysis.</p>
+      </div>
+
+      <p>
+        <button class="btn" id="test-key-btn">Test key</button>
+        <button class="btn secondary" id="save-key-btn" style="margin-left:8px">Save key</button>
+      </p>
+      <p class="error" id="key-error" role="alert"></p>
+      <p class="success" id="key-success" role="status"></p>
+
+      <p style="margin-top:16px"><button class="btn danger-ghost" id="clear-key-btn">Remove saved key</button></p>
+    </div>
+  </section>
+
+  <!-- ============ NEW ANALYSIS ============ -->
+  <section class="view" id="view-new" aria-label="New analysis">
+    <h1>New deal analysis</h1>
+    <p class="lead" style="margin-bottom:20px">Enter what you know. Defaults are national medians — adjust anything shaded in the assumptions.</p>
+
+    <div class="notice warn" id="no-key-notice" hidden>You haven't saved an API key yet — the math will still run, but the AI narrative needs one. <a href="#/setup" data-nav="setup">Set it up</a> (30 seconds).</div>
+
+    <form id="deal-form" novalidate>
+      <div class="card">
+        <h3>Property</h3>
+        <div class="grid2">
+          <div class="field"><label for="f-name">Label / address</label><input id="f-name" placeholder="123 Main St, Tampa FL"></div>
+          <div class="field"><label for="f-price">Purchase price ($)</label><input id="f-price" type="number" min="1" required placeholder="200000"></div>
+          <div class="field"><label for="f-rent">Monthly rent ($)</label><input id="f-rent" type="number" min="0" required placeholder="1800"></div>
+          <div class="field"><label for="f-beds">Beds / baths <span class="hint">(optional)</span></label><input id="f-beds" placeholder="3 / 2"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Financing</h3>
+        <div class="grid2">
+          <div class="field"><label for="f-down">Down payment (%)</label><input id="f-down" type="number" min="0" max="100" step="0.5" value="20"></div>
+          <div class="field"><label for="f-rate">Interest rate (%, annual)</label><input id="f-rate" type="number" min="0" max="20" step="0.125" value="7"></div>
+          <div class="field"><label for="f-term">Loan term</label><select id="f-term"><option value="30" selected>30-year fixed</option><option value="15">15-year fixed</option></select></div>
+          <div class="field"><label for="f-closing">Closing costs (%) <span class="hint">of price</span></label><input id="f-closing" type="number" min="0" max="15" step="0.5" value="2"></div>
+        </div>
+      </div>
+
+      <details class="assume">
+        <summary>Operating assumptions (tap to adjust)</summary>
+        <div class="body">
+          <div class="grid2">
+            <div class="field"><label for="f-tax">Property tax ($/yr)</label><input id="f-tax" type="number" min="0" value="2400"><p class="tip">~1.1% of price is the US median.</p></div>
+            <div class="field"><label for="f-ins">Insurance ($/yr)</label><input id="f-ins" type="number" min="0" value="1200"></div>
+            <div class="field"><label for="f-hoa">HOA ($/mo)</label><input id="f-hoa" type="number" min="0" value="0"></div>
+            <div class="field"><label for="f-vac">Vacancy (%)</label><input id="f-vac" type="number" min="0" max="50" step="0.5" value="5"><p class="tip">5% ≈ 2–3 weeks empty per year.</p></div>
+            <div class="field"><label for="f-maint">Maintenance (%) <span class="hint">of rent</span></label><input id="f-maint" type="number" min="0" max="50" step="0.5" value="5"></div>
+            <div class="field"><label for="f-capex">CapEx reserve (%) <span class="hint">of rent</span></label><input id="f-capex" type="number" min="0" max="50" step="0.5" value="5"><p class="tip">Roof, HVAC, big-ticket replacements.</p></div>
+            <div class="field"><label for="f-mgmt">Property management (%) <span class="hint">of rent</span></label><input id="f-mgmt" type="number" min="0" max="50" step="0.5" value="8"><p class="tip">0 if self-managing.</p></div>
+          </div>
+        </div>
+      </details>
+
+      <div class="field"><label for="f-notes">Notes <span class="hint">(optional — neighborhood, listing quirks, anything the AI should weigh)</span></label><input id="f-notes" placeholder="Near university, HOA caps rentals at 20%..."></div>
+
+      <p><button type="submit" class="btn block" id="analyze-btn">Run analysis</button></p>
+      <p class="error" id="form-error" role="alert"></p>
+    </form>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section class="view" id="view-results" aria-label="Results">
+    <div id="results-content"></div>
+    <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="print-btn">Export PDF (print)</button>
+      <button class="btn secondary" data-nav="new">New analysis</button>
+      <button class="btn secondary" data-nav="history">History</button>
+    </p>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section class="view" id="view-history" aria-label="History">
+    <h1>Saved deals</h1>
+    <p class="lead" style="margin-bottom:16px">Everything lives in this browser. Tick up to 4 to compare side-by-side.</p>
+    <p class="no-print" style="margin-bottom:16px"><button class="btn secondary" id="compare-btn" disabled>Compare selected</button></p>
+    <div id="history-list"></div>
+  </section>
+
+  <!-- ============ COMPARE ============ -->
+  <section class="view" id="view-compare" aria-label="Compare">
+    <h1>Side-by-side</h1>
+    <div class="compare-table-wrap card"><div id="compare-content"></div></div>
+    <p><button class="btn secondary" data-nav="history">Back to history</button></p>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section class="view" id="view-pricing" aria-label="Pricing">
+    <h1>Pricing</h1>
+    <p class="lead" style="margin-bottom:20px">One avoided bad deal pays for a decade. AI compute runs on your own key — pennies per analysis.</p>
+    <div class="steps">
+      <div class="step"><h3>Monthly</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$15<span style="font-size:.9rem;color:var(--muted-fg)">/mo</span></p><p>Unlimited analyses, deal history, comparisons, PDF reports.</p></div>
+      <div class="step"><h3>Annual</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$120<span style="font-size:.9rem;color:var(--muted-fg)">/yr</span></p><p>Everything monthly, 33% off. For serious deal hunters.</p></div>
+      <div class="step"><h3>Free trial</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">7 days</p><p>Full access. Your API key covers the pennies of compute.</p></div>
+    </div>
+    <div class="notice">Billing isn't wired in this MVP build — checkout arrives with launch. The app is fully usable now with your own key.</div>
+  </section>
+</main>
+
+<footer class="site no-print">
+  <p>DealLens is an educational underwriting tool. Estimates only — not financial, investment, or tax advice. Verify every number with your lender and CPA. Your API key never leaves this browser.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
