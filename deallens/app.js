@@ -725,7 +725,33 @@ async function runAgentTests() {
   assert(!submitted11, 'A11 no autorun without required fields');
   setStrategy('buy');
   delete global.document;
-  delete global.document;
+
+  // A12: parseListingHtml — JSON-LD + text fallbacks, pure (no DOM)
+  const sampleHtml = '<html><head>'
+    + '<script type="application/ld+json">{"@type":"SingleFamilyResidence","offers":{"price":170000},'
+    + '"numberOfRooms":2,"floorSize":{"value":1005},"address":{"streetAddress":"2837 Stoneway Ln Unit D"}}</script>'
+    + '</head><body><h1>$170,000</h1><p>2 beds 2 baths 1,005 sqft</p>'
+    + '<p>Property tax $2,808 per year. HOA $395 monthly. MLS# R11131917. Year built 1991.</p>'
+    + '<p>Rent estimate $1,750 per month. Listed by Jane Doe, 555-0100.</p>'
+    + '</body></html>';
+  const pl12 = parseListingHtml(sampleHtml);
+  assert(pl12.price === 170000, 'A12 JSON-LD price, got ' + pl12.price);
+  assert(pl12.beds === 2, 'A12 JSON-LD beds');
+  assert(pl12.sqft === 1005, 'A12 JSON-LD sqft');
+  assert(pl12.baths === 2, 'A12 text baths, got ' + pl12.baths);
+  assert(pl12.taxA === 2808, 'A12 taxes, got ' + pl12.taxA);
+  assert(pl12.hoaM === 395, 'A12 HOA');
+  assert(pl12.mls === 'R11131917', 'A12 MLS#, got ' + pl12.mls);
+  assert(pl12.year === 1991, 'A12 year built');
+  assert(pl12.rent === 1750, 'A12 rent estimate, got ' + pl12.rent);
+  assert(pl12.realtor === 'Jane Doe', 'A12 realtor, got ' + pl12.realtor);
+  // no JSON-LD → text fallbacks still find the numbers
+  const bareHtml = '<html><body><div>Price $249,900</div><div>3 bd 2 ba 1,400 sqft, built 1985</div></body></html>';
+  const pb12 = parseListingHtml(bareHtml);
+  assert(pb12.price === 249900, 'A12 text price fallback, got ' + pb12.price);
+  assert(pb12.beds === 3 && pb12.baths === 2 && pb12.sqft === 1400 && pb12.year === 1985, 'A12 text field fallbacks');
+  assert(Object.keys(parseListingHtml('')).length === 0, 'A12 empty input → empty object');
+  assert(Object.keys(parseListingHtml('<html><body>hello</body></html>')).length === 0, 'A12 no fields → empty object');
 
   global.fetch = realFetch;
   console.log('Agent-loop tests: all passed (10 groups).');
@@ -2248,6 +2274,7 @@ async function onAgentParse() {
 }
 
 function wireListingIntake() {
+  wireNativeReadButton();
   const btn = document.getElementById('listingurl-pull');
   if (btn && !btn.dataset.wired) {
     btn.dataset.wired = '1';
@@ -2289,6 +2316,156 @@ function wireListingIntake() {
       if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
       else fallbackCopy(text, done);
     });
+  }
+}
+/* ================= Native listing-page reader (public-app loop) =================
+   In the installed APK the app can read a listing page itself: MainActivity exposes
+   window.DealLensNative.fetchListing(url), which loads the URL in a hidden WebView
+   (a real browser — no CORS wall, no proxy) and resolves the page HTML back to JS.
+   parseListingHtml() is pure regex/JSON (no DOM) so it is node-testable.
+   On the public website the bridge does not exist and the Ziggy loop remains. */
+function parseListingHtml(html) {
+  const out = {};
+  if (!html || typeof html !== 'string') return out;
+  const num = s => { const n = parseInt(String(s).replace(/[^0-9]/g, ''), 10); return isFinite(n) ? n : 0; };
+  // 1. JSON-LD structured data (schema.org — Zillow/Redfin/Realtor/Homes.com all emit it)
+  const ldRe = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m;
+  const walk = o => {
+    if (!o || typeof o !== 'object') return;
+    const objs = Array.isArray(o) ? o : [o];
+    objs.forEach(x => {
+      if (!x || typeof x !== 'object') return;
+      if (x.offers && x.offers.price != null && !out.price) {
+        const p = num(x.offers.price); if (p > 1000) out.price = p;
+      }
+      if (x.numberOfRooms != null && !out.beds) {
+        const b = num(x.numberOfRooms); if (b > 0 && b < 30) out.beds = b;
+      }
+      if (x.floorSize && x.floorSize.value != null && !out.sqft) {
+        const s = num(x.floorSize.value); if (s >= 200 && s <= 50000) out.sqft = s;
+      }
+      if (x.address && x.address.streetAddress && !out.street) out.street = String(x.address.streetAddress);
+      Object.keys(x).forEach(k => { if (typeof x[k] === 'object') walk(x[k]); });
+    });
+  };
+  while ((m = ldRe.exec(html)) !== null) {
+    try { walk(JSON.parse(m[1])); } catch (e) { /* malformed block — skip */ }
+  }
+  // 2. Embedded app data (Next.js __NEXT_DATA__ etc.): "price":170000
+  if (!out.price) {
+    const pm = /"price"\s*:\s*"?(\d{5,8})"?/.exec(html);
+    if (pm) out.price = num(pm[1]);
+  }
+  // 3. Visible text fallbacks
+  const text = html.replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  const grab = (re, min, max) => {
+    const mm = re.exec(text);
+    if (!mm) return 0;
+    const n = num(mm[1]);
+    return (n >= min && n <= max) ? n : 0;
+  };
+  if (!out.price) { const p = grab(/\$ ?([\d,]{4,})/, 10000, 100000000); if (p) out.price = p; }
+  if (!out.beds) { const b = grab(/(\d+)\s*(?:bd|beds?|bedrooms?)\b/i, 0, 30); if (b) out.beds = b; }
+  const baths = grab(/(\d+(?:\.\d+)?)\s*(?:ba|baths?|bathrooms?)\b/i, 0, 30);
+  if (baths) out.baths = baths;
+  if (!out.sqft) { const s = grab(/([\d,]+)\s*(?:sq\.?\s*ft|sqft|square feet)\b/i, 200, 50000); if (s) out.sqft = s; }
+  const tax = grab(/(?:property tax(?:es)?|annual tax)[^$]{0,50}\$([\d,]+)/i, 100, 200000);
+  if (tax) out.taxA = tax;
+  const hoa = grab(/HOA[^$]{0,50}\$([\d,]+)/i, 0, 10000);
+  if (hoa) out.hoaM = hoa;
+  const mls = /MLS\s*#?\s*:?\s*([A-Z0-9][A-Z0-9-]{3,20})/i.exec(text);
+  if (mls) out.mls = mls[1].toUpperCase();
+  const yr = grab(/(?:year built|built in|built)[^0-9]{0,12}(\d{4})/i, 1700, 2030);
+  if (yr) out.year = yr;
+  const rent = grab(/(?:rent(?:al)? (?:z)?estimate|estimated rent)[^$]{0,50}\$([\d,]+)/i, 100, 100000);
+  if (rent) out.rent = rent;
+  const ag = /(?:listed by|listing courtesy of|listing agent)\s*:?\s*([A-Z][A-Za-z.'&\- ]{2,50}?)(?:\s{2,}|,?\s*(?:\(|\d{3}[\s\-.]))/i.exec(text);
+  if (ag) out.realtor = ag[1].trim();
+  return out;
+}
+
+/* Promise resolving to the listing page HTML via the native bridge (APK only). */
+function nativeFetchListingHtml(url) {
+  return new Promise((resolve, reject) => {
+    if (!window.DealLensNative || !window.DealLensNative.fetchListing) {
+      reject(new Error('no-bridge')); return;
+    }
+    const timer = setTimeout(() => { cleanup(); reject(new Error('timeout')); }, 40000);
+    const cleanup = () => { clearTimeout(timer); window.__deallensListingHtml = null; window.__deallensListingError = null; };
+    window.__deallensListingHtml = html => { cleanup(); resolve(html || ''); };
+    window.__deallensListingError = () => { cleanup(); reject(new Error('blocked')); };
+    try { window.DealLensNative.fetchListing(url); }
+    catch (e) { cleanup(); reject(e); }
+  });
+}
+
+/* Fill the main form from parsed listing data, summarize, and auto-run when buy-ready. */
+function applyNativeListingData(d) {
+  const set = (id, v) => {
+    if (v == null || v === '' || v === 0) return false;
+    const el = document.getElementById(id);
+    if (el) { el.value = v; return true; }
+    return false;
+  };
+  const bits = [];
+  if (set('f-price', d.price)) bits.push('Price $' + (+d.price).toLocaleString('en-US'));
+  if (set('f-rent', d.rent)) bits.push('Rent est. $' + (+d.rent).toLocaleString('en-US') + '/mo');
+  if (set('f-tax', d.taxA)) bits.push('Taxes $' + (+d.taxA).toLocaleString('en-US') + '/yr');
+  if (set('f-hoa', d.hoaM)) bits.push('HOA $' + d.hoaM + '/mo');
+  if (d.beds || d.baths) {
+    const bb = [d.beds || '?', d.baths || '?'].join(' / ');
+    if (set('f-beds', bb)) bits.push(bb + ' bd/ba');
+  }
+  if (set('f-sqft', d.sqft)) bits.push((+d.sqft).toLocaleString('en-US') + ' sqft');
+  if (set('f-yearbuilt', d.year)) bits.push('Built ' + d.year);
+  const notes = [];
+  if (d.mls) { notes.push('MLS#: ' + d.mls); bits.push('MLS ' + d.mls); }
+  if (d.realtor) notes.push('Listing agent: ' + d.realtor);
+  if (notes.length) {
+    const n = document.getElementById('f-notes');
+    if (n) n.value = (n.value ? n.value + ' ' : '') + notes.join(' · ');
+  }
+  const st = document.getElementById('agent-read-status');
+  const show = t => { if (st) { st.hidden = false; st.textContent = t; } };
+  if (!bits.length) {
+    show('The page loaded but I couldn\u2019t pull the fields — the site may be blocking readers. Enter price + rent manually or use \u201cPull full listing via Ziggy\u201d.');
+    return;
+  }
+  show('Pulled from the listing page: ' + bits.join(' · ') + ' — running the analysis\u2026');
+  setStrategy(agentState.strategy || 'buy');
+  setLoanType(agentState.loan || 'conventional', true);
+  setTimeout(() => {
+    const form = document.getElementById('deal-form');
+    if (form && form.requestSubmit) form.requestSubmit();
+    else if (form) form.dispatchEvent(new Event('submit', { cancelable: true }));
+  }, 400);
+}
+
+async function onNativeReadListing() {
+  const st = document.getElementById('agent-read-status');
+  const show = t => { if (st) { st.hidden = false; st.textContent = t; } };
+  if (!agentState.url) return;
+  show('Reading the listing page\u2026');
+  try {
+    const html = await nativeFetchListingHtml(agentState.url);
+    if (!html || html.length < 2000) { show('The page came back empty — the site may be blocking readers. Try \u201cPull full listing via Ziggy\u201d instead.'); return; }
+    applyNativeListingData(parseListingHtml(html));
+  } catch (e) {
+    show('Couldn\u2019t read the page (' + ((e && e.message) || 'error') + ') — enter the numbers manually or use \u201cPull full listing via Ziggy\u201d.');
+  }
+}
+
+function wireNativeReadButton() {
+  const btn = document.getElementById('agent-nativeread');
+  if (!btn) return;
+  const hasBridge = typeof window !== 'undefined' && window.DealLensNative && window.DealLensNative.fetchListing;
+  btn.hidden = !hasBridge;
+  if (hasBridge && !btn.dataset.wired) {
+    btn.dataset.wired = '1';
+    btn.addEventListener('click', onNativeReadListing);
   }
 }
 /* ================= Rehab estimator + new-build comp =================
