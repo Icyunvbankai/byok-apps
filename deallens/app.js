@@ -763,6 +763,17 @@ async function runAgentTests() {
   assert(pe12.beds === 4 && pe12.baths === 3 && pe12.year === 2005, 'A12 embedded beds/baths/year');
   assert(pe12.taxA === 5200, 'A12 embedded taxes, got ' + pe12.taxA);
   assert(pe12.mls === 'RX-12345', 'A12 embedded MLS#, got ' + pe12.mls);
+  // live-page regression cases (Homes.com verification 2026-10-04)
+  const fp1 = parseListingHtml('<html><body><div>MLS Status: Active</div><div><a>See All MLS Data</a></div></body></html>');
+  assert(!fp1.mls, 'A12 no MLS false positive on "MLS Status"/"MLS Data", got ' + fp1.mls);
+  const fp2 = parseListingHtml('<html><body><div>MLS# R11131917</div></body></html>');
+  assert(fp2.mls === 'R11131917', 'A12 real MLS# captured, got ' + fp2.mls);
+  const lot = parseListingHtml('<html><body><div>3,873 SF building on 21,475 SF waterfront lot</div></body></html>');
+  assert(!lot.sqft, 'A12 lot size not taken as living area, got ' + lot.sqft);
+  const hist = parseListingHtml('<html><body><table><tr><td>Purchase History</td><td>$70,000 Warranty Deed</td><td>06/23/20</td></tr></table><div>Listed by William Mignucci, APEX Capital Realty LLC License #3637205</div></body></html>');
+  assert(hist.lastPrice === 70000, 'A12 deed-table last price, got ' + hist.lastPrice);
+  assert(hist.lastDate === '2020-06-23', 'A12 deed-table last date, got ' + hist.lastDate);
+  assert(/William Mignucci/.test(hist.realtor || ''), 'A12 long realtor string, got ' + hist.realtor);
 
   global.fetch = realFetch;
   console.log('Agent-loop tests: all passed (10 groups).');
@@ -2397,22 +2408,35 @@ function parseListingHtml(html) {
     const bm = /(\d+(?:\.\d+)?)\s*(?:ba|baths?|bathrooms?)\b/i.exec(text);
     if (bm) { const bf = parseFloat(bm[1]); if (isFinite(bf) && bf > 0 && bf <= 30) out.baths = bf; }
   }
-  if (!out.sqft) { const s = grab(/([\d,]+)\s*(?:sq\.?\s*ft|sqft|square feet|ft2|ft²|\bSF\b)/i, 200, 50000); if (s) out.sqft = s; }
+  if (!out.sqft) { const s = grab(/([\d,]+)\s*(?:sq\.?\s*ft|sqft|square feet|ft2|ft²)/i, 200, 50000); if (s) out.sqft = s; }
   if (!out.taxA) {
     const tax = grab(/(?:property tax(?:es)?|annual tax)[^$]{0,50}\$([\d,]+)/i, 100, 200000);
     if (tax) out.taxA = tax;
   }
   if (!out.hoaM) { const hoa = grab(/HOA[^$]{0,50}\$([\d,]+)/i, 0, 10000); if (hoa) out.hoaM = hoa; }
-  if (!out.mls) { const mls = /MLS\s*#?\s*:?\s*([A-Z0-9][A-Z0-9-]{3,20})/i.exec(text); if (mls) out.mls = mls[1].toUpperCase(); }
+  if (!out.mls) {
+    // require # : or "number" after MLS and a digit in the value —
+    // avoids false positives like "MLS Status: Active" or "See All MLS Data"
+    const mls = /MLS\s*(?:#|:|number|no\.?)\s*([A-Z0-9][A-Z0-9-]{3,20})/i.exec(text);
+    if (mls && /\d/.test(mls[1])) out.mls = mls[1].toUpperCase();
+  }
   if (!out.year) { const yr = grab(/(?:year built|built in|built)[^0-9]{0,12}(\d{4})/i, 1700, 2030); if (yr) out.year = yr; }
   const rent = grab(/(?:rent(?:al)? (?:z)?estimate|estimated rent)[^$]{0,50}\$([\d,]+)/i, 100, 100000);
   if (rent) out.rent = rent;
-  // last sale (price + date) — shown on most listing pages
-  const lsp = /last sold[^$]{0,60}\$([\d,]+)/i.exec(text) || /sold for \$([\d,]+)/i.exec(text);
+  // last sale — table formats like "$70,000 Warranty Deed" + "06/23/20"
+  const lsp = /last sold[^$]{0,60}\$([\d,]+)/i.exec(text) || /sold for \$([\d,]+)/i.exec(text)
+    || /\$([\d,]{5,})\s+(?:warranty\s+)?deed/i.exec(text);
   if (lsp) { const n = num(lsp[1]); if (n >= 10000) out.lastPrice = n; }
   const lsd = /(?:last sold|sold on)[^.!?]{0,60}?([A-Z][a-z]+ \d{1,2}, \d{4})/i.exec(text);
   if (lsd) out.lastDate = lsd[1];
-  const ag = /(?:listed by|listing courtesy of|listing agent)\s*:?\s*([A-Z][A-Za-z.'&\- ]{2,50}?)(?:\s{2,}|,?\s*(?:\(|\d{3}[\s\-.]))/i.exec(text);
+  else {
+    const lsd2 = /(?:warranty\s+deed|purchase history|last sold|sold)[^.!?]{0,80}?(\d{1,2})\/(\d{1,2})\/(\d{2,4})/i.exec(text);
+    if (lsd2) {
+      let yy = +lsd2[3]; if (yy < 100) yy += yy <= 30 ? 2000 : 1900;
+      if (yy >= 1700 && yy <= 2030) out.lastDate = yy + '-' + lsd2[1].padStart(2, '0') + '-' + lsd2[2].padStart(2, '0');
+    }
+  }
+  const ag = /(?:listed by|listing courtesy of|listing agent)\s*:?\s*([A-Z][A-Za-z.'&\/\-, ]{2,80}?)(?:\s{2,}|,?\s*(?:license|\(|\d{3}[\s\-.]))/i.exec(text);
   if (ag) out.realtor = ag[1].trim();
   return out;
 }
@@ -2454,8 +2478,12 @@ function applyNativeListingData(d) {
   if (set('f-lastsaleprice', d.lastPrice)) bits.push('Last sold $' + (+d.lastPrice).toLocaleString('en-US'));
   if (d.lastDate) {
     const lde = document.getElementById('f-lastsaledate');
-    const iso = (l => { const m = /([A-Z][a-z]+) (\d{1,2}), (\d{4})/.exec(l); if (!m) return ''; const mo = { January: '01', February: '02', March: '03', April: '04', May: '05', June: '06', July: '07', August: '08', September: '09', October: '10', November: '11', December: '12' }[m[1]]; return mo ? m[3] + '-' + mo + '-' + m[2].padStart(2, '0') : ''; })(d.lastDate);
-    if (lde && iso) { lde.value = iso; bits.push('on ' + d.lastDate); }
+    let iso = /^\d{4}-\d{2}-\d{2}$/.test(d.lastDate) ? d.lastDate : '';
+    if (!iso) {
+      const l = (s => { const m = /([A-Z][a-z]+) (\d{1,2}), (\d{4})/.exec(s); if (!m) return ''; const mo = { January: '01', February: '02', March: '03', April: '04', May: '05', June: '06', July: '07', August: '08', September: '09', October: '10', November: '11', December: '12' }[m[1]]; return mo ? m[3] + '-' + mo + '-' + m[2].padStart(2, '0') : ''; })(d.lastDate);
+      iso = l;
+    }
+    if (lde && iso) { lde.value = iso; bits.push('sold ' + d.lastDate); }
   }
   const notes = [];
   if (d.mls) { notes.push('MLS#: ' + d.mls); bits.push('MLS ' + d.mls); }
