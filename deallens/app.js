@@ -6,12 +6,18 @@
 /* ================= Storage ================= */
 const LS_KEY = 'deallens_key';     // {provider, key, model}
 const LS_DEALS = 'deallens_deals'; // array of deal objects (photos stripped — session only)
+const LS_RC = 'deallens_rentcast_key'; // raw RentCast API key string (BYOK property data)
 
 function loadKey() {
   try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch { return null; }
 }
 function saveKey(obj) { localStorage.setItem(LS_KEY, JSON.stringify(obj)); }
 function clearKey() { localStorage.removeItem(LS_KEY); }
+function loadRcKey() {
+  try { return localStorage.getItem(LS_RC) || ''; } catch { return ''; }
+}
+function saveRcKey(k) { localStorage.setItem(LS_RC, k); }
+function clearRcKey() { localStorage.removeItem(LS_RC); }
 function loadDeals() {
   try { return JSON.parse(localStorage.getItem(LS_DEALS) || '[]'); } catch { return []; }
 }
@@ -44,7 +50,7 @@ function showView(name) {
     b.classList.toggle('active', b.dataset.nav === name);
   });
   if (name === 'history') renderHistory();
-  if (name === 'setup') syncSetupUI();
+  if (name === 'setup') { syncSetupUI(); syncRcSetupUI(); }
   if (name === 'new') syncNoKeyNotice();
   if (name === 'watch') renderWatch();
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -522,7 +528,12 @@ const fmtDate = iso => { try { return new Date(iso + 'T12:00:00').toLocaleDateSt
 /* Node test hook */
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { calc, calcFlip, calcBuild, resolveLoan, loanBalance, codeFlags, dealScore, flipScore, buildScore, intelStats, intelLinks, streetViewEmbed, LOAN_TYPES };
-  if (require.main === module) runSelfTests();
+  if (require.main === module) {
+    runSelfTests();
+    runRentcastTests().then(
+      () => console.log('All RentCast tests passed.'),
+      e => { console.error('RentCast tests FAILED:', (e && e.message) || e); process.exit(1); });
+  }
 }
 
 function runSelfTests() {
@@ -647,6 +658,111 @@ function runSelfTests() {
   approx(o14b.metrics.cfM, 200, 5, 't14b cash flow within $5 of target');
 
   console.log('All calculator self-tests passed (14 tests).');
+}
+
+/* RentCast tests — global.fetch is mocked; the real API is never hit. */
+async function runRentcastTests() {
+  const assert = require('assert');
+  const realFetch = global.fetch;
+  const hadLS = 'localStorage' in global;
+  const realLS = global.localStorage;
+  let calls = [];
+  const okJson = data => ({ ok: true, status: 200, json: async () => data });
+  const mockFetch = impl => { global.fetch = async (url, opts) => { calls.push({ url, opts }); return impl(url, opts); }; };
+  const setKey = k => { global.localStorage = { getItem: () => (k || ''), setItem() {}, removeItem() {} }; };
+  const ADDR = '1403 Avenue M, Fort Pierce, FL 34950';
+
+  const FULL_PROP = [{ bedrooms: 3, bathrooms: 2, squareFootage: 1440, yearBuilt: 1972, lotSize: 7500, lastSaleDate: '2019-04-02T00:00:00', lastSalePrice: 150000, propertyType: 'Multi-Family' }];
+  const FULL_LIST = [{ price: 200000, bedrooms: 3, bathrooms: 2, squareFootage: 1440, daysOnMarket: 21, listedDate: '2026-09-10', photos: ['https://img/1.jpg', 'https://img/2.jpg', 'https://img/3.jpg', 'https://img/4.jpg', 'https://img/5.jpg', 'https://img/6.jpg', 'https://img/7.jpg', 'https://img/8.jpg'] }];
+  const FULL_AVMV = { price: 210000, priceRangeLow: 190000, priceRangeHigh: 230000 };
+  const FULL_AVMD = { rent: 1850, rentRangeLow: 1700, rentRangeHigh: 2000 };
+  const fullMock = async url => {
+    if (url.includes('/listings/sale?')) return okJson(FULL_LIST);
+    if (url.includes('/properties?')) return okJson(FULL_PROP);
+    if (url.includes('/avm/value?')) return okJson(FULL_AVMV);
+    if (url.includes('/avm/rent/')) return okJson(FULL_AVMD);
+    return okJson({});
+  };
+
+  try {
+    // R1: no-key short-circuits without calling fetch
+    setKey(''); calls = [];
+    mockFetch(async () => okJson({}));
+    let r = await rentcastLookup(ADDR);
+    assert(r.ok === false && r.reason === 'no-key', 'R1 no-key reason, got ' + JSON.stringify(r));
+    assert(calls.length === 0, 'R1 fetch must not be called without a key');
+
+    // R2: request construction — 4 parallel calls, encoded address, X-Api-Key
+    setKey('test-key-123'); calls = [];
+    mockFetch(fullMock);
+    r = await rentcastLookup(ADDR);
+    assert(r.ok === true, 'R2 lookup ok');
+    assert(calls.length === 4, 'R2 four parallel calls, got ' + calls.length);
+    const urls = calls.map(c => c.url);
+    assert(urls.some(u => u.startsWith(RC_BASE + '/properties?address=1403%20Avenue%20M')), 'R2 properties URL, got ' + urls[0]);
+    assert(urls.some(u => u.startsWith(RC_BASE + '/listings/sale?address=1403%20Avenue%20M')), 'R2 listings URL');
+    assert(urls.some(u => u.startsWith(RC_BASE + '/avm/value?address=1403%20Avenue%20M')), 'R2 avm value URL');
+    assert(urls.some(u => u.startsWith(RC_BASE + '/avm/rent/long-term?address=1403%20Avenue%20M')), 'R2 avm rent URL');
+    calls.forEach(c => assert(c.opts && c.opts.headers && c.opts.headers['X-Api-Key'] === 'test-key-123', 'R2 X-Api-Key header'));
+
+    // R3: normalization of a full shape
+    assert(r.price === 200000, 'R3 price, got ' + r.price);
+    assert(r.beds === 3 && r.baths === 2, 'R3 beds/baths');
+    assert(r.sqft === 1440 && r.yearBuilt === 1972 && r.lotSqft === 7500, 'R3 sqft/year/lot');
+    assert(r.lastSaleDate === '2019-04-02', 'R3 lastSaleDate, got ' + r.lastSaleDate);
+    assert(r.lastSalePrice === 150000, 'R3 lastSalePrice');
+    assert(r.dom === 21 && r.listedDate === '2026-09-10', 'R3 dom/listedDate');
+    assert(Array.isArray(r.photos) && r.photos.length === 6, 'R3 photos capped at 6, got ' + r.photos.length);
+    assert(r.avmValue === 210000 && r.avmLow === 190000 && r.avmHigh === 230000, 'R3 avm value range');
+    assert(r.rentEst === 1850 && r.rentLow === 1700 && r.rentHigh === 2000, 'R3 rent range');
+    assert(r.source === 'rentcast', 'R3 source tag');
+
+    // R4: sparse shape → nulls, no crash
+    calls = [];
+    mockFetch(async () => okJson({}));
+    r = await rentcastLookup(ADDR);
+    assert(r.ok === true, 'R4 ok on sparse');
+    assert(r.price === null && r.beds === null && r.rentEst === null, 'R4 nulls');
+    assert(Array.isArray(r.photos) && r.photos.length === 0, 'R4 empty photos');
+
+    // R5: error mapping — 401 / 429
+    mockFetch(async () => ({ ok: false, status: 401, json: async () => ({}) }));
+    r = await rentcastLookup(ADDR);
+    assert(!r.ok && r.reason === 'bad-key' && /Setup/.test(r.message), 'R5 401 → bad-key, got ' + r.reason);
+    mockFetch(async () => ({ ok: false, status: 429, json: async () => ({}) }));
+    r = await rentcastLookup(ADDR);
+    assert(!r.ok && r.reason === 'rate-limit' && /50/.test(r.message), 'R5 429 → rate-limit, got ' + r.reason);
+
+    // R6: network failure and timeout map to 'network', never throw
+    mockFetch(async () => { throw new Error('boom'); });
+    r = await rentcastLookup(ADDR);
+    assert(!r.ok && r.reason === 'network', 'R6 reject → network, got ' + r.reason);
+    mockFetch((url, opts) => new Promise((_, rej) => {
+      const sig = opts && opts.signal;
+      if (sig) sig.addEventListener('abort', () => { const e = new Error('aborted'); e.name = 'AbortError'; rej(e); });
+    }));
+    const t = await rentcastFetch('/properties?address=x', 'k', 30);
+    assert(!t.ok && t.reason === 'network' && /timed out/.test(t.message), 'R6 timeout → network/timed out, got ' + JSON.stringify(t));
+
+    // R7: partial failure — one endpoint down, rest fine → ok with partial flag
+    mockFetch(async url => url.includes('/avm/rent/') ? { ok: false, status: 500, json: async () => ({}) } : fullMock(url));
+    r = await rentcastLookup(ADDR);
+    assert(r.ok === true && r.partial === true && r.price === 200000 && r.rentEst === null, 'R7 partial');
+
+    // R8: pure fill mapping, incl. AVM price fallback
+    const fills = rentcastFills(r);
+    assert(fills.price === 200000 && !('rent' in fills), 'R8 fills from R7 data');
+    const f2 = rentcastFills({ price: null, avmValue: 210500, rentEst: 1850, beds: 3, baths: 2.5, sqft: 1440, yearBuilt: 1972, lastSaleDate: '2019-04-02', lastSalePrice: 150000, dom: 21, photos: ['a', 'b'] });
+    assert(f2.price === 210500, 'R8 price falls back to AVM, got ' + f2.price);
+    assert(f2.rent === 1850 && f2.beds === '3 / 2.5' && f2.sqft === 1440 && f2.yearBuilt === 1972, 'R8 fills fields');
+    assert(f2.lastSaleDate === '2019-04-02' && f2.lastSalePrice === 150000 && f2.dom === 21, 'R8 intel fills');
+    assert(f2.photos.length === 2, 'R8 photos');
+
+    console.log('RentCast tests: all passed (8 groups).');
+  } finally {
+    global.fetch = realFetch;
+    if (hadLS) global.localStorage = realLS; else delete global.localStorage;
+  }
 }
 
 /* ================= LLM (BYOK) ================= */
@@ -804,6 +920,15 @@ function syncNoKeyNotice() {
   document.getElementById('no-key-notice').hidden = !!loadKey();
 }
 
+function syncRcSetupUI() {
+  const k = loadRcKey();
+  const inp = document.getElementById('rc-key');
+  const okEl = document.getElementById('rc-success'), errEl = document.getElementById('rc-error');
+  if (inp) inp.value = k || '';
+  if (errEl) errEl.textContent = '';
+  if (okEl) okEl.textContent = k ? 'RentCast key saved in this browser.' : '';
+}
+
 function scoreClass(s) { return s >= 70 ? 'good' : s >= 45 ? 'mid' : 'bad'; }
 function valClass(v, good, bad) { return v >= good ? 'good' : v <= bad ? 'bad' : 'warnv'; }
 
@@ -891,14 +1016,28 @@ function intelCardHtml(deal) {
     ['Year built', it.yearBuilt || '—'],
     ['Square feet', it.sqft || '—'],
   ];
+  const rcBits = [];
+  if (deal.rcData) {
+    if (deal.rcData.price != null) rcBits.push('price ' + fmt$(deal.rcData.price));
+    if (deal.rcData.avmValue != null) rcBits.push('AVM ' + fmt$(deal.rcData.avmValue));
+    if (deal.rcData.rentEst != null) rcBits.push('rent est. ' + fmt$(deal.rcData.rentEst) + '/mo');
+    if (deal.rcData.beds != null || deal.rcData.baths != null) rcBits.push((deal.rcData.beds != null ? deal.rcData.beds : '?') + ' bd / ' + (deal.rcData.baths != null ? deal.rcData.baths : '?') + ' ba');
+    if (deal.rcData.sqft != null) rcBits.push(Math.round(deal.rcData.sqft).toLocaleString('en-US') + ' sqft');
+  }
+  const rcLine = deal.rcData
+    ? `<p class="tip"><strong style="color:var(--fg)">Data source: RentCast</strong>${rcBits.length ? ' — ' + esc(rcBits.join(' · ')) : ''}.</p>` : '';
+  const verifyTip = deal.rcData
+    ? 'Some fields were auto-filled via RentCast — verify against the listing.'
+    : 'Free public sources — nothing is auto-fetched; open a link to verify records yourself.';
   return `<div class="card"><h3>Property intel</h3>
     ${addr ? `<p style="margin-bottom:10px"><strong>${esc(addr)}</strong></p>` : ''}
+    ${rcLine}
     <table class="breakdown"><tr><th>Item</th><th>Detail</th></tr>
     ${rows.map(r => `<tr><td>${r[0]}</td><td style="text-align:right">${esc(String(r[1]))}</td></tr>`).join('')}</table>
     ${sv ? `<div class="map-wrap"><iframe title="Map of ${esc(addr)}" src="${esc(sv)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>` : ''}
     ${links.length ? `<div class="intel-links no-print">${links.map(l =>
       `<a class="intel-link" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)}</a>`).join('')}</div>
-      <p class="tip">Free public sources — nothing is auto-fetched; open a link to verify records yourself.</p>` : ''}
+      <p class="tip">${verifyTip}</p>` : ''}
     ${photos ? `<h3 style="margin-top:16px">Photos (${deal.photos.length})</h3><div class="photo-strip">${photos}</div>
       <p class="tip no-print">Photos live for this browser session only.</p>` : ''}
   </div>`;
@@ -1313,6 +1452,7 @@ function readForm() {
     intel,
     photos: sessionPhotos.map(p => ({ src: p.src, name: p.name })),
     notes: v('f-notes'), createdAt: new Date().toISOString(),
+    rcData: lastRcData, // normalized RentCast payload (null when unused)
   };
 }
 
@@ -1356,6 +1496,9 @@ function resetAnalysis() {
   if (form) form.reset();
   clearPhotos();
   currentDealId = null;
+  lastRcData = null;
+  const rh = document.getElementById('f-rent-rc-hint');
+  if (rh) rh.hidden = true;
   setStrategy('buy');
   setLoanType('conventional', true);
   renderPhotoGallery();
@@ -1368,11 +1511,148 @@ function resetAnalysis() {
   go('new');
 }
 
+/* ================= RentCast (BYOK property data) =================
+   Free tier: 50 lookups/month. One listing pull = 4 API calls (property
+   record, active listing, AVM value, AVM rent). The user brings their own
+   key, stored in localStorage under LS_RC. No live calls are made without
+   a saved key; node tests mock global.fetch. */
+const RC_BASE = 'https://api.rentcast.io/v1';
+const RC_TIMEOUT_MS = 12000;
+
+function rcErr(reason, message) { return { ok: false, reason, message }; }
+
+async function rentcastFetch(path, key, timeoutMs) {
+  const ms = timeoutMs == null ? RC_TIMEOUT_MS : timeoutMs;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(RC_BASE + path, {
+      headers: { 'X-Api-Key': key, 'Accept': 'application/json' },
+      signal: ctrl.signal,
+    });
+    if (res.status === 401) return rcErr('bad-key', 'RentCast rejected the key — check it in Setup.');
+    if (res.status === 429) return rcErr('rate-limit', 'RentCast rate limit hit (free tier: 50 lookups/month).');
+    if (!res.ok) return rcErr('http', 'RentCast error (HTTP ' + res.status + ') — try again.');
+    const json = await res.json();
+    return { ok: true, data: json };
+  } catch (e) {
+    const aborted = e && (e.name === 'AbortError' || /abort/i.test(String((e && e.message) || '')));
+    return rcErr('network', aborted
+      ? 'RentCast request timed out — check connection and try again.'
+      : 'Could not reach RentCast — check connection and try again.');
+  } finally { clearTimeout(timer); }
+}
+
+const rcPick = (obj, keys) => {
+  for (const k of keys) {
+    const v = obj ? obj[k] : undefined;
+    if (v !== undefined && v !== null && v !== '') return v;
+  }
+  return null;
+};
+const rcNum = v => { const x = parseFloat(v); return isFinite(x) ? x : null; };
+const rcFirst = v => (Array.isArray(v) ? v[0] : v) || {};
+
+/* Defensive normalization — every field optional, null when absent. */
+function normalizeRentcast(propRaw, listingRaw, avmVRaw, avmRRaw) {
+  const p = rcFirst(propRaw), l = rcFirst(listingRaw);
+  const photosRaw = rcPick(l, ['photos', 'images', 'photoUrls', 'imageUrls', 'photosUrls'])
+    || rcPick(p, ['photos', 'images', 'photoUrls', 'imageUrls']) || [];
+  const photos = (Array.isArray(photosRaw) ? photosRaw : [])
+    .map(x => (typeof x === 'string' ? x : (x && (x.url || x.src || x.href))) || null)
+    .filter(Boolean).slice(0, 6);
+  const lastSaleDate = rcPick(p, ['lastSaleDate', 'lastSoldDate', 'last_sale_date']);
+  const listedDate = rcPick(l, ['listedDate', 'listDate', 'listed_date']);
+  const avmV = avmVRaw || {}, avmR = avmRRaw || {};
+  return {
+    price: rcNum(rcPick(l, ['price', 'listPrice'])) ?? rcNum(rcPick(p, ['price'])),
+    beds: rcNum(rcPick(l, ['bedrooms', 'beds'])) ?? rcNum(rcPick(p, ['bedrooms', 'beds'])),
+    baths: rcNum(rcPick(l, ['bathrooms', 'baths'])) ?? rcNum(rcPick(p, ['bathrooms', 'baths'])),
+    sqft: rcNum(rcPick(l, ['squareFootage', 'sqft', 'livingArea', 'living_area'])) ?? rcNum(rcPick(p, ['squareFootage', 'sqft', 'livingArea'])),
+    yearBuilt: rcNum(rcPick(p, ['yearBuilt', 'year_built'])),
+    lotSqft: rcNum(rcPick(p, ['lotSize', 'lotSqft', 'lot_size'])),
+    lastSaleDate: lastSaleDate ? String(lastSaleDate).slice(0, 10) : null,
+    lastSalePrice: rcNum(rcPick(p, ['lastSalePrice', 'lastSoldPrice', 'last_sale_price'])),
+    dom: rcNum(rcPick(l, ['daysOnMarket', 'days_on_market'])),
+    listedDate: listedDate ? String(listedDate).slice(0, 10) : null,
+    photos,
+    avmValue: rcNum(rcPick(avmV, ['price', 'value'])),
+    avmLow: rcNum(rcPick(avmV, ['priceRangeLow', 'low', 'rangeLow'])),
+    avmHigh: rcNum(rcPick(avmV, ['priceRangeHigh', 'high', 'rangeHigh'])),
+    rentEst: rcNum(rcPick(avmR, ['rent', 'price', 'value'])),
+    rentLow: rcNum(rcPick(avmR, ['rentRangeLow', 'priceRangeLow', 'low', 'rangeLow'])),
+    rentHigh: rcNum(rcPick(avmR, ['rentRangeHigh', 'priceRangeHigh', 'high', 'rangeHigh'])),
+    propertyType: rcPick(p, ['propertyType', 'property_type']) || rcPick(l, ['propertyType']),
+    source: 'rentcast',
+  };
+}
+
+async function rentcastLookup(address) {
+  const key = loadRcKey();
+  if (!key) return rcErr('no-key', 'No RentCast key saved.');
+  const enc = encodeURIComponent(address);
+  const [prop, listing, avmV, avmR] = await Promise.all([
+    rentcastFetch('/properties?address=' + enc + '&limit=1', key),
+    rentcastFetch('/listings/sale?address=' + enc + '&limit=1', key),
+    rentcastFetch('/avm/value?address=' + enc, key),
+    rentcastFetch('/avm/rent/long-term?address=' + enc, key),
+  ]);
+  const results = [prop, listing, avmV, avmR];
+  const fatal = results.find(r => !r.ok && (r.reason === 'bad-key' || r.reason === 'rate-limit'));
+  if (fatal) return fatal;
+  if (!results.some(r => r.ok)) return results.find(r => !r.ok); // all failed: surface first error
+  const data = normalizeRentcast(
+    prop.ok ? prop.data : null, listing.ok ? listing.data : null,
+    avmV.ok ? avmV.data : null, avmR.ok ? avmR.data : null);
+  const out = Object.assign({ ok: true }, data);
+  if (results.some(r => !r.ok)) out.partial = true;
+  return out;
+}
+
+/* Pure mapping: normalized RentCast data -> form fills. Tested in node. */
+function rentcastFills(d) {
+  const fills = {};
+  const price = d.price != null ? d.price : d.avmValue;
+  if (price != null) fills.price = Math.round(price);
+  if (d.rentEst != null) fills.rent = Math.round(d.rentEst);
+  if (d.beds != null || d.baths != null) {
+    fills.beds = (d.beds != null ? String(d.beds).replace(/\.0$/, '') : '?') + ' / ' +
+      (d.baths != null ? String(d.baths).replace(/\.0$/, '') : '?');
+  }
+  if (d.sqft != null) fills.sqft = Math.round(d.sqft);
+  if (d.yearBuilt != null) fills.yearBuilt = Math.round(d.yearBuilt);
+  if (d.lastSaleDate) fills.lastSaleDate = d.lastSaleDate;
+  if (d.lastSalePrice != null) fills.lastSalePrice = Math.round(d.lastSalePrice);
+  if (d.dom != null) fills.dom = Math.round(d.dom);
+  if (d.photos && d.photos.length) fills.photos = d.photos.slice(0, 6);
+  return fills;
+}
+
+function applyRentcastFills(fills) {
+  const set = (id, v) => { const el = document.getElementById(id); if (el && v !== undefined) el.value = v; };
+  set('f-price', fills.price);
+  set('f-rent', fills.rent);
+  const rh = document.getElementById('f-rent-rc-hint');
+  if (rh) {
+    if (fills.rent != null) { rh.textContent = 'RentCast estimate — verify against the listing.'; rh.hidden = false; }
+    else rh.hidden = true;
+  }
+  set('f-beds', fills.beds);
+  set('f-sqft', fills.sqft);
+  set('f-yearbuilt', fills.yearBuilt);
+  set('f-lastsaledate', fills.lastSaleDate);
+  set('f-lastsaleprice', fills.lastSalePrice);
+  set('f-dom', fills.dom);
+  (fills.photos || []).forEach(u => addPhoto(u, 'via RentCast'));
+}
+
 /* ================= Listing link intake =================
    Paste a listing URL → address is parsed from the slug (no network calls;
    listing sites block CORS) → address field fills and intel deep-links render.
+   If a RentCast key is saved, the full pull runs automatically (~4 calls).
    "Ask Ziggy" copies a chat message; Ziggy replies with a pre-filled link. */
 let lastListingUrl = '';
+let lastRcData = null; // normalized RentCast payload for the current deal (or null)
 
 function wireListingIntake() {
   const btn = document.getElementById('listingurl-pull');
@@ -1404,7 +1684,20 @@ function wireListingIntake() {
         (sv ? '<div class="map-wrap"><iframe title="Map of ' + esc(parsed.address) + '" src="' + esc(sv) + '" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>' : '');
     }
     if (msg) msg.textContent = 'Address pulled from ' + parsed.source + '. Add price + rent, or tap below and Ziggy will pull the full listing.';
-    if (ziggyRow) ziggyRow.hidden = false;
+    const showZiggy = () => { if (ziggyRow) ziggyRow.hidden = false; };
+    if (loadRcKey()) {
+      // BYOK RentCast pull: ~4 calls, runs automatically.
+      if (ziggyRow) ziggyRow.hidden = true;
+      if (msg) msg.textContent = 'Address pulled from ' + parsed.source + '. Pulling listing data via RentCast…';
+      btn.disabled = true;
+      rentcastLookup(parsed.address).then(res => {
+        btn.disabled = false;
+        handleRentcastResult(res, parsed);
+      });
+    } else {
+      showZiggy();
+      appendRcSetupNudge();
+    }
   });
   const zb = document.getElementById('listingurl-ziggy');
   if (zb) zb.addEventListener('click', () => {
@@ -1418,6 +1711,34 @@ function wireListingIntake() {
       navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
     } else fallbackCopy(text, done);
   });
+}
+
+function handleRentcastResult(res, parsed) {
+  const msg = document.getElementById('listingurl-msg');
+  const ziggyRow = document.getElementById('link-ziggy-row');
+  if (!res.ok) {
+    if (msg) msg.textContent = res.message + ' Fill in manually, or tap below and Ziggy will pull the full listing.';
+    if (ziggyRow) ziggyRow.hidden = false;
+    return;
+  }
+  lastRcData = res;
+  applyRentcastFills(rentcastFills(res));
+  if (msg) msg.textContent = 'Pulled via RentCast · ~4 calls used.' +
+    (res.partial ? ' (Some fields were unavailable.)' : '') +
+    ' Review the filled values, then hit Run analysis.';
+  if (ziggyRow) ziggyRow.hidden = true;
+}
+
+function appendRcSetupNudge() {
+  const msg = document.getElementById('listingurl-msg');
+  if (!msg || document.getElementById('rc-setup-nudge')) return;
+  const a = document.createElement('a');
+  a.id = 'rc-setup-nudge';
+  a.href = '#/setup';
+  a.textContent = 'Add a RentCast key in Setup for automatic pulls.';
+  a.style.cssText = 'margin-left:8px;color:var(--accent)';
+  msg.appendChild(document.createTextNode(' '));
+  msg.appendChild(a);
 }
 
 /* ================= Deal Watch =================
@@ -1649,7 +1970,8 @@ function wireWatch() {
 
 /* Node-testable exports for the watch helpers (browser bundle unaffected). */
 if (typeof module !== 'undefined' && module.exports) {
-  Object.assign(module.exports, { watchCopyText, fmtMoney, WATCH_INTERVALS, WATCH_PROPTYPES, WATCH_STRATS, LS_WATCH, WATCH_RESULTS_URL, parseListingUrl, suggestOffer, titleCase });
+  Object.assign(module.exports, { watchCopyText, fmtMoney, WATCH_INTERVALS, WATCH_PROPTYPES, WATCH_STRATS, LS_WATCH, WATCH_RESULTS_URL, parseListingUrl, suggestOffer, titleCase,
+    rentcastLookup, rentcastFetch, normalizeRentcast, rentcastFills, applyRentcastFills, loadRcKey, saveRcKey, clearRcKey, RC_BASE, LS_RC });
 }
 
 function init() {
@@ -1685,7 +2007,20 @@ function init() {
     clearKey();
     document.getElementById('api-key').value = '';
     document.getElementById('key-success').textContent = 'Key removed.';
-    syncSetupUI();
+  });
+  document.getElementById('rc-save-btn').addEventListener('click', () => {
+    const errEl = document.getElementById('rc-error'), okEl = document.getElementById('rc-success');
+    errEl.textContent = ''; okEl.textContent = '';
+    const key = document.getElementById('rc-key').value.trim();
+    if (!key) { errEl.textContent = 'Paste a key first.'; return; }
+    saveRcKey(key);
+    okEl.textContent = 'RentCast key saved in this browser only.';
+  });
+  document.getElementById('rc-clear-btn').addEventListener('click', () => {
+    clearRcKey();
+    document.getElementById('rc-key').value = '';
+    document.getElementById('rc-error').textContent = '';
+    document.getElementById('rc-success').textContent = 'RentCast key removed.';
   });
 
   /* Strategy tabs */
