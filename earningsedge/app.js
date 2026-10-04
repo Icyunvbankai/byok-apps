@@ -133,14 +133,44 @@ const PROVIDERS = {
   openai:    { name: 'OpenAI',    url: 'https://api.openai.com/v1/chat/completions', keyHeader: k => ({ 'Authorization': 'Bearer ' + k }), defaultModel: 'gpt-4o',          costHint: '~$0.15–0.40/breakdown', inRate: 2.5, outRate: 10 },
   xai:       { name: 'xAI',       url: 'https://api.x.ai/v1/chat/completions',       keyHeader: k => ({ 'Authorization': 'Bearer ' + k }), defaultModel: 'grok-3',           costHint: '~$0.15–0.40/breakdown', inRate: 3,   outRate: 15, approxRate: true },
   anthropic: { name: 'Anthropic', url: 'https://api.anthropic.com/v1/messages',      keyHeader: k => ({ 'x-api-key': k, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' }), defaultModel: 'claude-sonnet-4-5', costHint: '~$0.40–0.60/breakdown', inRate: 3, outRate: 15, corsNote: true },
+  gemini: { name: 'Gemini', url: 'https://generativelanguage.googleapis.com/v1beta/models', keyHeader: k => ({}), defaultModel: 'gemini-3.5-flash-lite', costHint: '~$0.15–0.30/breakdown', inRate: 0.5, outRate: 2, gemini: true },
 };
 function getDefaultModel(provider) {
   const saved = loadModels();
   return (saved && saved[provider]) || PROVIDERS[provider].defaultModel;
 }
 
+
+/* Gemini provider adapter: key goes in the URL query param, not a header. */
+async function callGemini(key, model, system, text, maxTokens, images) {
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+    + encodeURIComponent(model) + ':generateContent?key=' + encodeURIComponent(key);
+  const parts = [{ text: (system ? system + '\n\n' : '') + (text || '') }];
+  (images || []).forEach(im => {
+    const b64 = im.b64 || (im.dataUrl && im.dataUrl.split(',')[1]) || '';
+    if (b64) parts.push({ inline_data: { mime_type: im.mediaType || 'image/jpeg', data: b64 } });
+  });
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts }],
+      generationConfig: { maxOutputTokens: maxTokens || 700, temperature: 0.4 },
+    }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => '');
+    throw new Error('Provider error ' + res.status + ': ' + t.slice(0, 160));
+  }
+  const j = await res.json();
+  return ((j.candidates || []).map(c =>
+    ((c.content && c.content.parts) || []).map(pt => pt.text || '').join('')
+  ).join('\n') || '');
+}
+
 async function callLLM(provider, key, model, system, user, maxTokens, temperature) {
   const p = PROVIDERS[provider];
+  if (p.gemini) { const gt = await callGemini(key, model, system, user, maxTokens); return { text: gt, usage: { in: 0, out: 0 } }; }
   let res;
   const body = provider === 'anthropic'
     ? { model, max_tokens: maxTokens || 2000, system, messages: [{ role: 'user', content: user }] }
@@ -687,6 +717,7 @@ function init() {
       openai: document.getElementById('set-model-openai').value.trim() || PROVIDERS.openai.defaultModel,
       xai: document.getElementById('set-model-xai').value.trim() || PROVIDERS.xai.defaultModel,
       anthropic: document.getElementById('set-model-anthropic').value.trim() || PROVIDERS.anthropic.defaultModel,
+      gemini: document.getElementById('set-model-gemini').value.trim() || PROVIDERS.gemini.defaultModel,
     };
     saveModels(m);
     document.getElementById('models-success').textContent = 'Defaults saved.';
