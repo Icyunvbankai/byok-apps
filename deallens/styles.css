@@ -345,3 +345,33 @@ footer.site a { color: var(--accent); }
   .report-brand, .report-brand span { color: #000; }
   .metric .v, table.breakdown td:last-child { font-family: var(--mono); }
 }
+
+/* ---------- Deal Watch ---------- */
+.radio-group { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 18px; }
+.radio-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 10px 16px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--muted); color: var(--fg); font-size: 0.9rem; cursor: pointer;
+}
+.radio-pill input { accent-color: var(--accent); width: 16px; height: 16px; }
+.radio-pill:has(input:checked) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.watch-summary { display: grid; gap: 8px; margin: 0; }
+.watch-summary > div {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+}
+.watch-summary dt { color: var(--muted-fg); font-size: 0.88rem; }
+.watch-summary dd { font-weight: 600; text-align: right; }
+
+.match-grid { display: grid; gap: 12px; }
+@media (min-width: 720px) { .match-grid { grid-template-columns: 1fr 1fr; } }
+.match-card {
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--card); padding: 14px 16px;
+}
+.match-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+.match-head strong { font-size: 1rem; }
+.match-price { color: var(--accent); font-weight: 700; font-size: 1.05rem; white-space: nowrap; }
+.match-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+.match-stats .stat .v { font-size: 1.2rem; }
