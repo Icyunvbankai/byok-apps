@@ -2516,15 +2516,34 @@ function applyNativeListingData(d) {
   }, 400);
 }
 
+/* Cloud listing-parser API (AWS Lambda): fetches the page server-side, no CORS wall. */
+const PARSER_API = 'https://ww4npv41xf.execute-api.us-east-1.amazonaws.com';
+
+async function cloudParseListing(url) {
+  const res = await fetch(PARSER_API + '/?url=' + encodeURIComponent(url));
+  if (!res.ok) throw new Error('server ' + res.status);
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
+}
+
 async function onNativeReadListing() {
   const st = document.getElementById('agent-read-status');
   const show = t => { if (st) { st.hidden = false; st.textContent = t; } };
   if (!agentState.url) return;
   show('Reading the listing page\u2026');
+  // 1. Native bridge (APK) — fastest, no network hop.
+  const hasBridge = typeof window !== 'undefined' && window.DealLensNative && window.DealLensNative.fetchListing;
+  if (hasBridge) {
+    try {
+      const html = await nativeFetchListingHtml(agentState.url);
+      if (html && html.length >= 2000) { applyNativeListingData(parseListingHtml(html)); return; }
+    } catch (e) { /* fall through to cloud */ }
+  }
+  // 2. Cloud parser API — works in any browser, no bridge needed.
   try {
-    const html = await nativeFetchListingHtml(agentState.url);
-    if (!html || html.length < 2000) { show('The page came back empty — the site may be blocking readers. Try \u201cPull full listing via Ziggy\u201d instead.'); return; }
-    applyNativeListingData(parseListingHtml(html));
+    show('Reading via cloud parser\u2026');
+    applyNativeListingData(await cloudParseListing(agentState.url));
   } catch (e) {
     show('Couldn\u2019t read the page (' + ((e && e.message) || 'error') + ') — enter the numbers manually or use \u201cPull full listing via Ziggy\u201d.');
   }
@@ -2532,13 +2551,10 @@ async function onNativeReadListing() {
 
 function wireNativeReadButton() {
   const btn = document.getElementById('agent-nativeread');
-  if (!btn) return;
-  const hasBridge = typeof window !== 'undefined' && window.DealLensNative && window.DealLensNative.fetchListing;
-  btn.hidden = !hasBridge;
-  if (hasBridge && !btn.dataset.wired) {
-    btn.dataset.wired = '1';
-    btn.addEventListener('click', onNativeReadListing);
-  }
+  if (!btn || btn.dataset.wired) return;
+  btn.hidden = false; // cloud parser works everywhere — bridge no longer required
+  btn.dataset.wired = '1';
+  btn.addEventListener('click', onNativeReadListing);
 }
 /* ================= Rehab estimator + new-build comp =================
    Treasure Coast rough $/sqft averages — honest ranges, not quotes.
