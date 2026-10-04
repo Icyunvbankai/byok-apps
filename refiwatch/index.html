@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RefiWatch — Know the exact month refinancing pays off</title>
+<meta name="description" content="BYOK mortgage refinance break-even monitor. Your API key, your compute — deterministic break-even math with zero inference cost to us.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header no-print">
+  <div class="header-inner">
+    <a class="logo" href="#/" data-nav="landing">Refi<span>Watch</span></a>
+    <nav class="nav" aria-label="Main">
+      <button data-nav="loan">+ New loan</button>
+      <button data-nav="watch">Watchlist</button>
+      <button data-nav="history">History</button>
+      <button data-nav="setup">API Key</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ============ LANDING ============ -->
+  <section class="view" id="view-landing" aria-label="Welcome">
+    <div class="hero">
+      <span class="kicker">BYOK &middot; your key, your compute</span>
+      <h1>Stop guessing when to refinance.</h1>
+      <p class="lead">Enter your loan once. Drag the rate slider and watch the exact month refinancing pays for itself move in real time. You bring your own AI key, so analysis costs you pennies.</p>
+      <p style="margin-top:8px">
+        <button class="btn" data-nav="loan">Check my break-even</button>
+        <button class="btn secondary" data-nav="setup" style="margin-left:8px">Set up API key</button>
+      </p>
+    </div>
+
+    <div class="card demo-card" aria-label="Interactive break-even demo">
+      <h3>Try it: drag the rate</h3>
+      <p class="tip" style="margin-bottom:12px">Sample loan: $350,000 balance at 7.00% with 330 months left. Estimated closing costs $5,050.</p>
+      <div class="slider-row">
+        <input type="range" id="demo-rate" min="3" max="8" step="0.125" value="5.5" aria-label="Candidate refinance rate">
+        <div class="slider-val"><span id="demo-rate-val">5.500%</span></div>
+      </div>
+      <div class="demo-result">
+        <div class="demo-hero"><span id="demo-be">13</span><small>months to break even</small></div>
+        <div class="demo-sub">Monthly savings <strong id="demo-save">$405</strong> at this rate</div>
+      </div>
+      <p class="tip">A 1% drop on a $350k loan saves roughly $200/mo. Small rate moves, big lifetime numbers.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step"><span class="n">1</span><h3>Enter your loan</h3><p>Balance, rate, months left, home value. Plain-English tooltips on every field — two minutes, tops.</p></div>
+      <div class="step"><span class="n">2</span><h3>We do the math</h3><p>Break-even month, closing costs, 5-year and lifetime savings — computed deterministically in code. The AI narrates; it never does your arithmetic.</p></div>
+      <div class="step"><span class="n">3</span><h3>Get told when it's time</h3><p>Log weekly rate quotes and the app watches your threshold. When break-even crosses it, you get the alert — never a rate prediction.</p></div>
+    </div>
+
+    <div class="card">
+      <h3>How BYOK pricing works</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem">RefiWatch runs on <strong style="color:var(--fg)">your</strong> OpenAI, xAI, or Anthropic key — pasted once, stored only in this browser, never on our servers. A full analysis costs roughly <strong style="color:var(--fg)">$0.01–0.03</strong> of your own API credit. We charge for the monitoring engine, not the tokens.</p>
+      <p style="margin-top:12px"><button class="btn secondary" data-nav="pricing">See plans</button></p>
+    </div>
+
+    <div class="card">
+      <h3>FAQ</h3>
+      <details class="faq"><summary>Do you predict rates?</summary><p>No — and anyone who says they do is selling something. RefiWatch is a decision tool, not a crystal ball. It tells you exactly when the math works at any rate you enter; it never claims to know where rates are headed.</p></details>
+      <details class="faq"><summary>Where does my API key go?</summary><p>It stays in this browser's localStorage. Every AI call goes straight from your browser to your provider. We never see it.</p></details>
+      <details class="faq"><summary>How accurate are the closing costs?</summary><p>They're rule-based estimates (origination, appraisal, title, recording, prepaids). Your lender's Loan Estimate is the source of truth — always verify before you sign.</p></details>
+      <details class="faq"><summary>What does RefiWatch cost?</summary><p>$9/month or $90/year after a 30-day free trial. One refinance at the right moment saves tens of thousands in interest — the subscription is a rounding error.</p></details>
+    </div>
+  </section>
+
+  <!-- ============ SETUP ============ -->
+  <section class="view" id="view-setup" aria-label="API key setup">
+    <h1>Bring your own key</h1>
+    <p class="lead" style="margin-bottom:20px">Pick a provider, paste a key. It stays in this browser's local storage — it is never sent to our servers. Every AI call goes straight from your browser to the provider.</p>
+
+    <div class="notice">New to API keys? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI keys</a> &middot; <a href="https://console.x.ai" target="_blank" rel="noopener">xAI console</a> &middot; <a href="https://console.anthropic.com" target="_blank" rel="noopener">Anthropic console</a>. Set a small spend limit (e.g. $5) on your provider account.</div>
+    <div class="notice warn" id="anthropic-note" hidden>Heads up: Anthropic's API sometimes blocks direct browser calls (CORS). If the key test fails below, OpenAI or xAI will work fine — or run Anthropic through a tiny proxy.</div>
+
+    <div class="card">
+      <div class="provider-cards" role="radiogroup" aria-label="Provider">
+        <label class="provider" data-provider="openai">
+          <input type="radio" name="provider" value="openai" checked>
+          <strong>OpenAI</strong><small>gpt-4o-mini default &middot; ~$0.01/analysis</small>
+        </label>
+        <label class="provider" data-provider="xai">
+          <input type="radio" name="provider" value="xai">
+          <strong>xAI</strong><small>grok-3-mini default &middot; ~$0.01/analysis</small>
+        </label>
+        <label class="provider" data-provider="anthropic">
+          <input type="radio" name="provider" value="anthropic">
+          <strong>Anthropic</strong><small>haiku default &middot; ~$0.02/analysis</small>
+        </label>
+      </div>
+
+      <div class="field">
+        <label for="api-key">API key</label>
+        <input type="password" id="api-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+        <p class="tip">Stored only in this browser (localStorage). Clear it anytime in Settings.</p>
+      </div>
+
+      <div class="field">
+        <label for="model">Model <span class="hint">(editable — use what you like)</span></label>
+        <input type="text" id="model" value="gpt-4o-mini" spellcheck="false">
+        <p class="tip" id="model-hint">Mini-class models are plenty for refi verdicts and cost fractions of a cent per analysis.</p>
+      </div>
+
+      <p>
+        <button class="btn" id="test-key-btn">Test key</button>
+        <button class="btn secondary" id="save-key-btn" style="margin-left:8px">Save key</button>
+      </p>
+      <p class="error" id="key-error" role="alert"></p>
+      <p class="success" id="key-success" role="status"></p>
+
+      <p style="margin-top:16px"><button class="btn danger-ghost" id="clear-key-btn">Remove saved key</button></p>
+      <p style="margin-top:12px"><button class="btn secondary" data-nav="settings">App settings</button></p>
+    </div>
+  </section>
+
+  <!-- ============ LOAN SETUP ============ -->
+  <section class="view" id="view-loan" aria-label="Loan setup">
+    <h1>Your current loan</h1>
+    <p class="lead" style="margin-bottom:20px">Two minutes. Everything below stays in this browser. Hover the hints — every field is explained in plain English.</p>
+
+    <div class="notice warn" id="no-key-notice" hidden>You haven't saved an API key yet — the math will still run, but the AI verdict needs one. <a href="#/setup" data-nav="setup">Set it up</a> (30 seconds).</div>
+
+    <form id="loan-form" novalidate>
+      <div class="card">
+        <h3>Current mortgage</h3>
+        <div class="grid2">
+          <div class="field"><label for="l-name">Label <span class="hint">(optional)</span></label><input id="l-name" placeholder="Our house, Tampa"></div>
+          <div class="field"><label for="l-balance">Remaining balance ($)</label><input id="l-balance" type="number" min="1" required placeholder="350000"><p class="tip">What's left on the loan today — check your latest statement.</p></div>
+          <div class="field"><label for="l-rate">Current rate (%, annual)</label><input id="l-rate" type="number" min="0" max="20" step="0.125" required placeholder="7"><p class="tip">Your note rate, not APR.</p></div>
+          <div class="field"><label for="l-months">Months remaining</label><input id="l-months" type="number" min="1" max="360" required placeholder="330"><p class="tip">Payments left until payoff. A 30-year loan taken 3 years ago ≈ 324.</p></div>
+          <div class="field"><label for="l-home">Home value ($)</label><input id="l-home" type="number" min="1" required placeholder="450000"><p class="tip">Used for loan-to-value. A Zillow-style estimate is fine.</p></div>
+          <div class="field"><label for="l-credit">Credit tier</label>
+            <select id="l-credit">
+              <option value="excellent" selected>Excellent (740+)</option>
+              <option value="good">Good (670–739)</option>
+              <option value="fair">Fair (below 670)</option>
+            </select>
+            <p class="tip">Affects how realistic a candidate rate is — the verdict will say so.</p>
+          </div>
+        </div>
+        <p class="ltv-line">Loan-to-value: <strong id="ltv-readout">—</strong></p>
+      </div>
+
+      <div class="card">
+        <h3>Closing-cost assumptions</h3>
+        <div class="grid2">
+          <div class="field"><label for="l-tax">Property tax ($/yr)</label><input id="l-tax" type="number" min="0" value="4800"><p class="tip">Feeds the prepaid/escrow estimate.</p></div>
+          <div class="field"><label for="l-ins">Homeowners insurance ($/yr)</label><input id="l-ins" type="number" min="0" value="1800"><p class="tip">Feeds the prepaid/escrow estimate.</p></div>
+          <div class="field"><label for="l-orig">Origination (% of loan)</label><input id="l-orig" type="number" min="0" max="2" step="0.125" value="0.5"><p class="tip">Lenders typically charge 0–1%. 0.5% is a middle estimate.</p></div>
+          <div class="field"><label for="l-threshold">Alert me when break-even is under (months)</label><input id="l-threshold" type="number" min="1" max="120" value="24"><p class="tip">Your personal "worth the hassle" line. 24 months is a common rule of thumb.</p></div>
+        </div>
+        <p class="tip" style="margin-top:8px">Estimates only — appraisal $500, title $1,500, recording $200 are baked in. Your lender's Loan Estimate is the source of truth.</p>
+      </div>
+
+      <p><button type="submit" class="btn block" id="save-loan-btn">Compute my break-even</button></p>
+      <p class="error" id="loan-error" role="alert"></p>
+    </form>
+  </section>
+
+  <!-- ============ DASHBOARD ============ -->
+  <section class="view" id="view-dash" aria-label="Break-even dashboard">
+    <h1 id="dash-title">Break-even dashboard</h1>
+    <p class="lead" style="margin-bottom:20px">Drag the candidate rate and watch the month move. This is the whole game.</p>
+
+    <div class="card">
+      <div class="slider-row">
+        <label for="cand-rate" style="font-weight:600">Candidate rate</label>
+        <input type="range" id="cand-rate" min="3" max="8" step="0.125" value="5.5" aria-label="Candidate refinance rate">
+        <div class="slider-val"><span id="cand-rate-val">5.500%</span></div>
+        <label for="cand-term" style="font-weight:600;margin-left:8px">Term</label>
+        <select id="cand-term" style="width:auto">
+          <option value="30" selected>30-year</option>
+          <option value="15">15-year</option>
+        </select>
+      </div>
+    </div>
+
+    <div id="dash-results"></div>
+
+    <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" data-nav="verdict">Get AI verdict</button>
+      <button class="btn secondary" data-nav="watch">Log a rate quote</button>
+      <button class="btn secondary" data-nav="loan">Edit loan</button>
+    </p>
+  </section>
+
+  <!-- ============ WATCHLIST ============ -->
+  <section class="view" id="view-watch" aria-label="Rate watchlist">
+    <h1>Rate watchlist</h1>
+    <p class="lead" style="margin-bottom:20px">Log the rates you actually see — weekly quotes from lenders. No live feed in this build; your eyes are the feed. The app watches your threshold and tells you when the math crosses it.</p>
+
+    <div id="alert-banner"></div>
+
+    <div class="card">
+      <h3>Log a quote</h3>
+      <form id="quote-form" novalidate>
+        <div class="grid2">
+          <div class="field"><label for="q-date">Date</label><input id="q-date" type="date" required></div>
+          <div class="field"><label for="q-lender">Lender <span class="hint">(optional)</span></label><input id="q-lender" placeholder="Local CU"></div>
+          <div class="field"><label for="q-rate30">30-yr fixed quoted (%)</label><input id="q-rate30" type="number" min="0" max="20" step="0.125" required placeholder="5.75"></div>
+          <div class="field"><label for="q-rate15">15-yr fixed quoted (%) <span class="hint">(optional)</span></label><input id="q-rate15" type="number" min="0" max="20" step="0.125" placeholder="5.125"></div>
+        </div>
+        <p><button type="submit" class="btn" id="add-quote-btn">Log quote</button></p>
+        <p class="error" id="quote-error" role="alert"></p>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Trend</h3>
+      <div id="trend-wrap"><p style="color:var(--muted-fg)">Log at least 2 quotes to see the trend.</p></div>
+      <p id="watch-status" style="margin-top:12px;color:var(--muted-fg)"></p>
+    </div>
+
+    <div class="card">
+      <h3>Quote log</h3>
+      <div id="quote-table"></div>
+    </div>
+
+    <div class="card">
+      <h3>Alert threshold</h3>
+      <div class="field" style="max-width:320px"><label for="watch-threshold">Alert me when break-even is under (months)</label><input id="watch-threshold" type="number" min="1" max="120" value="24"></div>
+      <p><button class="btn secondary" id="save-threshold-btn">Save threshold</button></p>
+      <p class="success" id="threshold-saved" role="status"></p>
+    </div>
+  </section>
+
+  <!-- ============ VERDICT ============ -->
+  <section class="view" id="view-verdict" aria-label="AI verdict">
+    <h1>Refi verdict</h1>
+    <p class="lead" style="margin-bottom:20px">The numbers are computed in code below. The AI explains what they mean — and never predicts where rates are going. Decision tool, not a crystal ball.</p>
+    <div id="verdict-nums"></div>
+    <h2>The analyst's take</h2>
+    <div class="card" id="verdict-llm">
+      <div aria-live="polite"><div class="skeleton"></div><div class="skeleton" style="width:80%"></div><div class="skeleton" style="width:60%"></div><p style="color:var(--muted-fg);font-size:.9rem">Running the AI verdict on your key…</p></div>
+    </div>
+    <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn secondary" id="rerun-verdict-btn">Re-run verdict</button>
+      <button class="btn secondary" data-nav="dash">Back to dashboard</button>
+    </p>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section class="view" id="view-history" aria-label="History">
+    <h1>Saved loans</h1>
+    <p class="lead" style="margin-bottom:16px">Everything lives in this browser. Each profile keeps its own quote log — handy for two properties or a partner's loan.</p>
+    <p class="no-print" style="margin-bottom:16px"><button class="btn secondary" data-nav="loan">+ New loan profile</button></p>
+    <div id="profile-list"></div>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section class="view" id="view-pricing" aria-label="Pricing">
+    <h1>Pricing</h1>
+    <p class="lead" style="margin-bottom:20px">One refinance at the right moment saves five figures in interest. $9 a month is a rounding error — that's the pitch, and it's true.</p>
+    <div class="steps">
+      <div class="step"><h3>Monthly</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$9<span style="font-size:.9rem;color:var(--muted-fg)">/mo</span></p><p>Unlimited profiles, break-even engine, watchlist + alerts, AI verdicts.</p></div>
+      <div class="step"><h3>Annual</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$90<span style="font-size:.9rem;color:var(--muted-fg)">/yr</span></p><p>Everything monthly. Two months free — for the patient rate-watcher.</p></div>
+      <div class="step"><h3>Free trial</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">30 days</p><p>Full access. Log one loan + 4 weekly quotes and watch the trend hook you.</p></div>
+    </div>
+    <div class="notice">Billing isn't wired in this MVP build — checkout arrives with launch. The app is fully usable now with your own key.</div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section class="view" id="view-settings" aria-label="Settings">
+    <h1>Settings</h1>
+
+    <div class="card">
+      <h3>API key</h3>
+      <p id="settings-key-status" style="color:var(--muted-fg)"></p>
+      <p id="settings-model-info" style="color:var(--muted-fg);margin-top:4px"></p>
+      <p style="margin-top:12px"><button class="btn secondary" data-nav="setup">Change key</button></p>
+    </div>
+
+    <div class="card">
+      <h3>Alert threshold</h3>
+      <div class="field" style="max-width:320px"><label for="set-threshold">Alert me when break-even is under (months)</label><input id="set-threshold" type="number" min="1" max="120" value="24"></div>
+      <p><button class="btn secondary" id="save-settings-btn">Save</button></p>
+      <p class="success" id="settings-saved" role="status"></p>
+    </div>
+
+    <div class="card">
+      <h3>Your key spend</h3>
+      <p style="color:var(--muted-fg)">Estimated spend on <strong style="color:var(--fg)">your</strong> provider key from RefiWatch calls: <strong id="spend-counter" style="color:var(--fg)">$0.00</strong></p>
+      <p class="tip">Verdicts ≈ $0.02 each; key tests ≈ $0.001. Single-digit cents a month for an active user.</p>
+      <p style="margin-top:8px"><button class="btn danger-ghost" id="reset-spend-btn">Reset counter</button></p>
+    </div>
+
+    <div class="card">
+      <h3>Export / import</h3>
+      <p class="tip" style="margin-bottom:12px">Take your loan profiles and quote logs with you.</p>
+      <p style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn secondary" id="export-btn">Export JSON</button>
+        <label class="btn secondary" for="import-file" style="cursor:pointer">Import JSON</label>
+        <input type="file" id="import-file" accept="application/json" hidden>
+      </p>
+      <p class="error" id="settings-error" role="alert"></p>
+    </div>
+  </section>
+</main>
+
+<footer class="site no-print">
+  <p>RefiWatch is an educational decision tool — not financial, mortgage, or tax advice, and not a rate forecast. Verify every number with your lender. Your API key never leaves this browser. &middot; <a href="#/settings" data-nav="settings" style="color:var(--secondary)">Settings</a></p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
