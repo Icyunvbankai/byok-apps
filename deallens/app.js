@@ -576,9 +576,98 @@ if (typeof module !== 'undefined' && module.exports) {
   if (require.main === module) {
     runSelfTests();
     runRentcastTests().then(
-      () => console.log('All RentCast tests passed.'),
+      () => runAgentTests().then(
+        () => console.log('All agent-loop tests passed.'),
+        e => { console.error('Agent-loop tests FAILED:', (e && e.message) || e); process.exit(1); }),
       e => { console.error('RentCast tests FAILED:', (e && e.message) || e); process.exit(1); });
   }
+}
+
+/* Agent-loop tests: geocode, repair estimator, new-build comp, intake→run
+   field mapping, dig-deeper gating. Pure functions + mocked fetch. */
+async function runAgentTests() {
+  const assert = require('assert');
+  const realFetch = global.fetch;
+
+  // A1: geocode success → coords stored
+  global.fetch = async () => ({ ok: true, json: async () => [{ lat: '27.4467', lon: '-80.3256' }] });
+  let g = await geocodeAddress('1403 Avenue M, Fort Pierce, FL 34950');
+  assert(g && Math.abs(g.lat - 27.4467) < 1e-6 && Math.abs(g.lng + 80.3256) < 1e-6, 'A1 geocode coords, got ' + JSON.stringify(g));
+
+  // A2: geocode failure → null, no throw (HTTP error)
+  global.fetch = async () => ({ ok: false, status: 500 });
+  g = await geocodeAddress('Nowhere XYZ');
+  assert(g === null, 'A2 geocode HTTP failure → null');
+
+  // A3: geocode failure → null, no throw (network reject)
+  global.fetch = async () => { throw new Error('boom'); };
+  g = await geocodeAddress('Nowhere XYZ');
+  assert(g === null, 'A3 geocode network failure → null');
+
+  // A4: geocode empty address → null without fetching
+  let fetched = false;
+  global.fetch = async () => { fetched = true; return { ok: true, json: async () => [] }; };
+  g = await geocodeAddress('   ');
+  assert(g === null && fetched === false, 'A4 empty address → null, no fetch');
+
+  // A5: repair estimator math — 1,005 sqft × Moderate $42 = $42,210
+  const re = repairEstimate(1005, 'moderate');
+  assert(re.total === 42210, 'A5 repair 1005×42=42210, got ' + re.total);
+  assert(re.label === 'Moderate rehab' && re.rate === 42, 'A5 tier label/rate');
+  const re0 = repairEstimate(0, 'gut');
+  assert(re0.total === 0, 'A5 zero sqft → 0');
+
+  // A6: new-build comp — 1,005 × $175 = $175,875
+  assert(newBuildEstimate(1005, 175) === 175875, 'A6 new-build 1005×175=175875');
+
+  // A7: repair tiers labeled as Treasure Coast rough averages
+  assert(REPAIR_TIERS.length === 4 && REPAIR_TIERS[0].rate === 5 && REPAIR_TIERS[3].rate === 85, 'A7 tier table intact');
+
+  // A8: permit links present and honestly labeled
+  const pl = permitLinksHtml();
+  assert(pl.includes('codeinspectionpublic.stlucieco.gov'), 'A8 county permit portal link');
+  assert(pl.includes('stlucieco.gov'), 'A8 county permitting page link');
+  assert(pl.includes('msc.fema.gov'), 'A8 FEMA flood map link');
+  assert(/isn't auto-pulled/.test(pl), 'A8 honest auto-pull label');
+
+  // A9: dealSqft prefers intel.sqft, falls back to rcData
+  assert(dealSqft({ intel: { sqft: 1005 } }) === 1005, 'A9 intel sqft');
+  assert(dealSqft({ intel: {}, rcData: { sqft: 1440 } }) === 1440, 'A9 rcData sqft fallback');
+  assert(dealSqft({ intel: {} }) === 0, 'A9 no sqft → 0');
+
+  // A10: intake → run field mapping (buy/FHA, flip, validation)
+  const valsBuy = { 'a-price': '200000', 'a-rent': '1800' };
+  global.document = { getElementById: id => ({ value: valsBuy[id] !== undefined ? valsBuy[id] : '' }) };
+  agentState.parsed = { address: '1403 Avenue M, Fort Pierce, FL 34950', source: 'Zillow' };
+  agentState.strategy = 'buy'; agentState.loan = 'fha'; agentState.coords = null;
+  const ap = agentPatch();
+  assert(!ap.error, 'A10 no error, got ' + ap.error);
+  assert(ap.strategy === 'buy' && ap.loan === 'fha', 'A10 strategy/loan passthrough');
+  assert(ap.fields['f-price'] === 200000 && ap.fields['f-rent'] === 1800, 'A10 price/rent mapped');
+  assert(ap.fields['f-addr'] === '1403 Avenue M, Fort Pierce, FL 34950', 'A10 address mapped');
+  agentState.strategy = 'flip';
+  const valsFlip = { 'a-fprice': '150000', 'a-arv': '250000', 'a-rehab': '40000' };
+  global.document = { getElementById: id => ({ value: valsFlip[id] !== undefined ? valsFlip[id] : '' }) };
+  const apf = agentPatch();
+  assert(!apf.error, 'A10 flip no error');
+  assert(apf.fields['f-price'] === 150000 && apf.fields['f-flip-arv'] === 250000 && apf.fields['f-flip-rehab'] === 40000, 'A10 flip fields mapped');
+  agentState.strategy = 'build';
+  const valsBuild = { 'a-land': '60000', 'a-buildcost': '220000', 'a-barv': '350000' };
+  global.document = { getElementById: id => ({ value: valsBuild[id] !== undefined ? valsBuild[id] : '' }) };
+  const apb = agentPatch();
+  assert(!apb.error, 'A10 build no error');
+  assert(apb.fields['f-build-land'] === 60000 && apb.fields['f-build-hard'] === 220000 && apb.fields['f-build-arv'] === 350000, 'A10 build fields mapped');
+  agentState.strategy = 'buy';
+  global.document = { getElementById: () => ({ value: '' }) };
+  const ape = agentPatch();
+  assert(ape.error === 'Enter a purchase price.', 'A10 missing price errors, got ' + ape.error);
+  agentState.parsed = null;
+  const ape2 = agentPatch();
+  assert(ape2.error === 'Parse a listing link first.', 'A10 no parse errors');
+  delete global.document;
+
+  global.fetch = realFetch;
+  console.log('Agent-loop tests: all passed (10 groups).');
 }
 
 function runSelfTests() {
@@ -831,14 +920,19 @@ async function runRentcastTests() {
     const gid = id => global.document.getElementById(id);
     gid('f-listingurl').value = 'https://www.zillow.com/homedetails/1403-Avenue-M-Fort-Pierce-FL-34950/12345678_zpid/';
     await gid('listingurl-pull')._h['click']();
-    assert(calls.length === 0, 'T9 no auto-run after parse, got ' + calls.length + ' fetches');
-    assert(gid('link-rcpull-row').hidden === false, 'T9 RC pull row visible after parse');
-    assert(gid('f-addr').value && /1403 Avenue M/i.test(gid('f-addr').value), 'T9 address filled, got ' + gid('f-addr').value);
-    await gid('listingurl-rcpull')._h['click']();
-    assert(calls.length === 4, 'T9 explicit tap fires 4, got ' + calls.length);
-    assert(confirmCalls === 1, 'T9 confirm shown once, got ' + confirmCalls);
-    assert(rcUsage().used === 4, 'T9 usage +4, got ' + rcUsage().used);
-    assert(/Enriched via RentCast/.test(gid('listingurl-msg').textContent), 'T9 enriched msg, got ' + gid('listingurl-msg').textContent);
+    assert(calls.every(c => String(c.url).includes('nominatim.openstreetmap.org')), 'T9 parse fires no RentCast calls');
+    assert(calls.length <= 1, 'T9 at most the free geocode call, got ' + calls.length + ' fetches');
+    assert(gid('agent-flow').hidden === false, 'T9 agent flow revealed after parse');
+    assert(agentState.parsed && /1403 Avenue M/i.test(agentState.parsed.address), 'T9 parsed address in agent state');
+    assert(/What the agent found/.test(gid('agent-intel').innerHTML), 'T9 agent intel rendered');
+    // RentCast pull no longer lives in the intake card — the deep-dive card appears on results instead
+    // Dig-deeper gating: prominent card for score >= 60
+    gid('dig-deeper-slot').innerHTML = '';
+    renderDigDeeper({ score: 75, addr: ADDR });
+    assert(/Dig deeper with RentCast/.test(gid('dig-deeper-slot').innerHTML), 'T9 dig-deeper card for score>=60');
+    gid('dig-deeper-slot').innerHTML = '';
+    renderDigDeeper({ score: 40, addr: ADDR });
+    assert(gid('dig-deeper-slot').innerHTML === '', 'T9 no dig-deeper card for score<60 (subtle link instead)');
 
     // T10: no-key gate — zero requests, confirm never shown
     setKey(''); resetStore(); stubConfirm(true); confirmCalls = 0; calls = [];
@@ -962,7 +1056,7 @@ async function runRentcastTests() {
     fillIntakeAddress('1403 Avenue M, Fort Pierce, FL 34950');
     assert(gid('f-addr').value === '1403 Avenue M, Fort Pierce, FL 34950', 'T18a intake addr filled');
     assert(global.location.hash === '#/new', 'T18b navigates to new, got ' + global.location.hash);
-    assert(gid('link-rcpull-row').hidden === false, 'T18c RC pull row revealed');
+    assert(gid('agent-flow').hidden === false, 'T18c agent flow revealed');
     delete global.location;
 
     console.log('RentCast tests: all passed (18 groups).');
@@ -1209,7 +1303,7 @@ function llmCardHtml(deal) {
     deal.llm ? `<div class="llm-body">${esc(deal.llm)}</div>`
       : `<div aria-live="polite"><div class="skeleton"></div><div class="skeleton" style="width:80%"></div><div class="skeleton" style="width:60%"></div><p style="color:var(--muted-fg);font-size:.9rem">Running the AI narrative on your key…</p></div>`}</div>`;
 }
-function intelCardHtml(deal) {
+function intelCardHtml(deal, interactive) {
   const it = deal.intel || {};
   const addr = it.addr || deal.addr || '';
   const links = intelLinks(addr);
@@ -1239,6 +1333,9 @@ function intelCardHtml(deal) {
   const verifyTip = deal.rcData
     ? 'Some fields were auto-filled via RentCast — verify against the listing.'
     : 'Free public sources — nothing is auto-fetched; open a link to verify records yourself.';
+  const digSubtle = (interactive && !deal.rcData && (deal.score || 0) < 60 && (deal.strategy || 'buy') === 'buy')
+    ? '<p class="tip no-print"><a href="#" id="rc-subtle-link" style="color:var(--accent)">Full RentCast pull</a> — tax history, AVM, photos, DOM (uses ~4 calls).</p>'
+    : '';
   return `<div class="card"><h3>Property intel</h3>
     ${addr ? `<p style="margin-bottom:10px"><strong>${esc(addr)}</strong></p>` : ''}
     ${rcLine}
@@ -1248,6 +1345,7 @@ function intelCardHtml(deal) {
     ${links.length ? `<div class="intel-links no-print">${links.map(l =>
       `<a class="intel-link" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label)}</a>`).join('')}</div>
       <p class="tip">${verifyTip}</p>` : ''}
+    ${digSubtle}
     ${photos ? `<h3 style="margin-top:16px">Photos (${deal.photos.length})</h3><div class="photo-strip">${photos}</div>
       <p class="tip no-print">Photos live for this browser session only.</p>` : ''}
   </div>`;
@@ -1450,8 +1548,19 @@ function renderResults(id) {
     : strat === 'build' ? renderBuildResults(deal, m, s, flags)
     : renderBuyResults(deal, m, s, flags);
   box.innerHTML = `<h1 class="no-print">${esc(deal.name || 'Untitled deal')}</h1>` + stratBadge +
-    (strat === 'buy' ? rcEnrichCardHtml() : '') + body + intelCardHtml(deal);
-  if (strat === 'buy') wireRcEnrich(deal);
+    (strat === 'buy' ? '<div id="dig-deeper-slot"></div>' : '') + body +
+    rehabEstimateCardHtml(deal) + newBuildCompCardHtml(deal) + intelCardHtml(deal, true);
+  if (strat === 'buy') {
+    renderDigDeeper(deal, false);
+    const sub = document.getElementById('rc-subtle-link');
+    if (sub) sub.addEventListener('click', e => {
+      e.preventDefault();
+      renderDigDeeper(deal, true);
+      const slot = document.getElementById('dig-deeper-slot');
+      if (slot && slot.scrollIntoView) { try { slot.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e2) {} }
+    });
+  }
+  wireEstimatorCards(deal);
 }
 
 /* ---------- Full printable report ---------- */
@@ -1647,6 +1756,7 @@ function readForm() {
     addr: v('f-addr'), dom: v('f-dom'), listNote: v('f-listnote'),
     lastSaleDate: v('f-lastsaledate'), lastSalePrice: v('f-lastsaleprice'),
     yearBuilt: v('f-yearbuilt'), sqft: v('f-sqft'),
+    lat: v('f-lat'), lng: v('f-lng'),
   };
   const stats = intelStats(n('f-price') || n('f-build-land'), intel.lastSalePrice, intel.lastSaleDate);
   intel.yearsSinceSale = stats.yearsSinceSale;
@@ -1716,6 +1826,15 @@ function resetAnalysis() {
   renderPhotoGallery();
   const pe = document.getElementById('form-error');
   if (pe) pe.textContent = '';
+  // reset the agent intake card
+  agentState.parsed = null; agentState.url = ''; agentState.coords = null;
+  agentState.loan = 'conventional'; agentState.strategy = 'buy'; agentState.geocoding = false;
+  const af = document.getElementById('agent-flow');
+  if (af) af.hidden = true;
+  const lu = document.getElementById('f-listingurl');
+  if (lu) lu.value = '';
+  const lm = document.getElementById('listingurl-msg');
+  if (lm) lm.textContent = '';
   const rc = document.getElementById('results-content');
   if (rc) rc.innerHTML = '';
   const pc = document.getElementById('report-content');
@@ -1860,129 +1979,361 @@ function applyRentcastFills(fills) {
   (fills.photos || []).forEach(u => addPhoto(u, 'via RentCast'));
 }
 
-/* ================= Listing link intake =================
-   Paste a listing URL → address is parsed from the slug (no network calls;
-   listing sites block CORS) → address field fills and intel deep-links render.
-   Full RentCast pulls are explicit opt-in only (~4 calls each): the intake
-   card and the Buy & Hold results view each show a gated pull button.
-   "Ask Ziggy" copies a chat message; Ziggy replies with a pre-filled link. */
+/* ================= DealLens agent loop =================
+   Drop a link → pick loan → pick strategy → the app does the rest.
+   Free auto-enrichment only (listing sites block scraping, so nothing is
+   fetched from them): the address is parsed from the URL slug, geocoded via
+   Nominatim, and free deep-links render (parcel/GIS, Street View, FEMA flood
+   map, St. Lucie County permit search). Price + rent are the only manual
+   inputs — no free source has them. RentCast is the deep-dive on good deals,
+   not the entry step (see the results-view "Dig deeper" card). */
 let lastListingUrl = '';
 let lastRcData = null; // normalized RentCast payload for the current deal (or null)
 
-/* Fill the intake from an address alone (no listing URL needed): fills the
-   address field, renders intel deep-links + Street View, and reveals the
-   opt-in RentCast pull row + Ziggy fallback. Used by link intake and by
-   "Analyze" buttons on Find-deals search results. */
+const AGENT_LOANS = [
+  ['conventional', 'Conventional'], ['fha', 'FHA'], ['va', 'VA'],
+  ['dscr', 'DSCR loan'], ['seller', 'Seller finance'], ['cash', 'Cash'],
+];
+const AGENT_STRATS = [
+  ['buy', 'Buy & Hold'], ['flip', 'Rehab Flip'], ['build', 'New Build'],
+];
+let agentState = { parsed: null, url: '', loan: 'conventional', strategy: 'buy', coords: null, geocoding: false };
+
+/* Free geocode via Nominatim (OpenStreetMap). 8s timeout, silent failure → null. */
+async function geocodeAddress(address) {
+  if (typeof fetch === 'undefined') return null;
+  const q = encodeURIComponent(String(address || '').trim());
+  if (!q) return null;
+  let ctl = null, to = null;
+  try {
+    if (typeof AbortController !== 'undefined') {
+      ctl = new AbortController();
+      to = setTimeout(() => { try { ctl.abort(); } catch (e) {} }, 8000);
+    }
+    const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + q, {
+      headers: { 'Accept': 'application/json' },
+      signal: ctl ? ctl.signal : undefined,
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (!Array.isArray(data) || !data.length) return null;
+    const lat = parseFloat(data[0].lat), lng = parseFloat(data[0].lon);
+    if (!isFinite(lat) || !isFinite(lng)) return null;
+    return { lat, lng };
+  } catch (err) { return null; }
+  finally { if (to) clearTimeout(to); }
+}
+
+/* Permit links — St. Lucie County (verified 2026-10-04 by web search):
+   the legacy Permit Status portal is searchable by site address / permit #;
+   the county is rolling out a new Tyler EnerGov portal, so the county
+   permitting & zoning page is linked too. Honestly labeled: history is NOT
+   auto-pulled. */
+function permitLinksHtml() {
+  const items = [
+    { label: 'St. Lucie County permit search', url: 'http://codeinspectionpublic.stlucieco.gov/Permit_Status.aspx' },
+    { label: 'County permitting & zoning', url: 'https://www.stlucieco.gov/departments-and-services/planning-and-development-services/permitting-zoning' },
+    { label: 'FEMA flood map', url: 'https://msc.fema.gov/portal/search' },
+  ];
+  return '<div class="intel-links">' + items.map(l =>
+    '<a class="intel-link" href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>').join('') + '</div>' +
+    '<p class="tip">Permit history isn\'t auto-pulled — check here in 2 minutes: roof permit age, electrical/plumbing permits, any open violations.</p>';
+}
+
+function renderAgentPills() {
+  const loanBox = document.getElementById('agent-loans');
+  if (loanBox) loanBox.innerHTML = AGENT_LOANS.map(([v, l]) =>
+    '<label class="radio-pill"><input type="radio" name="agent-loan" value="' + v + '"' +
+    (agentState.loan === v ? ' checked' : '') + '> ' + esc(l) + '</label>').join('');
+  const stratBox = document.getElementById('agent-strats');
+  if (stratBox) stratBox.innerHTML = AGENT_STRATS.map(([v, l]) =>
+    '<label class="radio-pill"><input type="radio" name="agent-strat" value="' + v + '"' +
+    (agentState.strategy === v ? ' checked' : '') + '> ' + esc(l) + '</label>').join('');
+  syncAgentInputs();
+}
+
+function syncAgentInputs() {
+  const s = agentState.strategy;
+  ['agent-inputs-buy', 'agent-inputs-flip', 'agent-inputs-build'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.hidden = true;
+  });
+  const show = document.getElementById(s === 'flip' ? 'agent-inputs-flip' : s === 'build' ? 'agent-inputs-build' : 'agent-inputs-buy');
+  if (show) show.hidden = false;
+}
+
+function renderAgentIntel() {
+  const box = document.getElementById('agent-intel');
+  if (!box) return;
+  if (!agentState.parsed) { box.innerHTML = ''; return; }
+  const addr = agentState.parsed.address;
+  const links = intelLinks(addr);
+  const sv = streetViewEmbed(addr);
+  const c = agentState.coords;
+  const coordLine = c ? ' · ' + c.lat.toFixed(5) + ', ' + c.lng.toFixed(5)
+    : agentState.geocoding ? ' · locating…' : '';
+  box.innerHTML =
+    '<p class="tip" style="margin-bottom:6px"><strong>What the agent found</strong> — via ' +
+    esc(agentState.parsed.source || 'link') + coordLine + '</p>' +
+    '<div class="intel-links">' + links.map(l =>
+      '<a class="intel-link" href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>').join('') + '</div>' +
+    (sv ? '<div class="map-wrap"><iframe title="Map of ' + esc(addr) + '" src="' + esc(sv) + '" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>' : '') +
+    permitLinksHtml();
+}
+
+function agentSetVal(id, v) { const el = document.getElementById(id); if (el) el.value = v; }
+
+/* Pure-ish mapping: agent inputs → main-form field values. Returns
+   {error} or {strategy, loan, fields:{id:value}}. Node-testable with a
+   stubbed document. */
+function agentPatch() {
+  const gv = id => { const el = (typeof document !== 'undefined') && document.getElementById(id); return el ? el.value : ''; };
+  const num = id => { const x = parseFloat(gv(id)); return isFinite(x) ? x : 0; };
+  const p = agentState.parsed;
+  if (!p) return { error: 'Parse a listing link first.' };
+  const fields = { 'f-addr': p.address, 'f-name': p.address };
+  if (agentState.coords) {
+    fields['f-lat'] = agentState.coords.lat.toFixed(6);
+    fields['f-lng'] = agentState.coords.lng.toFixed(6);
+  }
+  if (agentState.strategy === 'buy') {
+    const price = num('a-price'), rent = num('a-rent');
+    if (!(price > 0)) return { error: 'Enter a purchase price.' };
+    fields['f-price'] = price; fields['f-rent'] = rent;
+  } else if (agentState.strategy === 'flip') {
+    const price = num('a-fprice'), arv = num('a-arv'), rehab = num('a-rehab');
+    if (!(price > 0)) return { error: 'Enter a purchase price.' };
+    if (!(arv > 0)) return { error: 'Enter the after-repair value (ARV).' };
+    fields['f-price'] = price; fields['f-flip-arv'] = arv; fields['f-flip-rehab'] = rehab;
+  } else {
+    const land = num('a-land'), build = num('a-buildcost'), arv = num('a-barv');
+    if (!(land > 0 || build > 0)) return { error: 'Enter at least a land cost or build cost.' };
+    if (!(arv > 0)) return { error: 'Enter the finished value (ARV).' };
+    fields['f-build-land'] = land; fields['f-build-hard'] = build; fields['f-build-arv'] = arv;
+  }
+  return { strategy: agentState.strategy, loan: agentState.loan, fields };
+}
+
+function agentRunAnalysis() {
+  const errEl = document.getElementById('agent-error');
+  const setErr = t => { if (errEl) errEl.textContent = t || ''; };
+  setErr('');
+  const r = agentPatch();
+  if (r.error) { setErr(r.error); return; }
+  setStrategy(r.strategy);
+  setLoanType(r.loan, true);
+  Object.keys(r.fields).forEach(id => agentSetVal(id, r.fields[id]));
+  const form = document.getElementById('deal-form');
+  if (form && form.requestSubmit) form.requestSubmit();
+  else if (form) form.dispatchEvent(new Event('submit', { cancelable: true }));
+}
+
+/* Fill the agent loop from an address alone (Find-deals "Analyze" buttons). */
 function intakeFromAddress(addr) {
   const addrEl = document.getElementById('f-addr');
   if (addrEl) addrEl.value = addr;
-  const hint = document.getElementById('intel-links-hint');
-  if (hint) hint.textContent = 'Links unlocked for ' + addr + ' — they open in new tabs.';
-  const linksBox = document.getElementById('link-intel-links');
-  if (linksBox) {
-    const links = intelLinks(addr);
-    const sv = streetViewEmbed(addr);
-    linksBox.innerHTML = '<div class="intel-links">' + links.map(l =>
-      '<a class="intel-link" href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>').join('') + '</div>' +
-      (sv ? '<div class="map-wrap"><iframe title="Map of ' + esc(addr) + '" src="' + esc(sv) + '" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>' : '');
-  }
+  agentState.parsed = { address: addr, source: 'RentCast search', street: addr, city: null, state: null, zip: null };
+  agentState.url = '';
+  agentState.coords = null;
+  agentState.geocoding = true;
+  const flow = document.getElementById('agent-flow');
+  if (flow) flow.hidden = false;
+  renderAgentPills();
+  const head = document.getElementById('agent-head');
+  if (head) head.innerHTML = '📍 <strong>' + esc(addr) + '</strong>';
+  const found = document.getElementById('agent-found');
+  if (found) found.textContent = 'Agent found the address — add price + rent and I\'ll run it.';
+  renderAgentIntel();
+  geocodeAddress(addr).then(c => {
+    agentState.geocoding = false;
+    if (c) { agentState.coords = c; renderAgentIntel(); }
+  }).catch(() => { agentState.geocoding = false; });
+}
+
+async function onAgentParse() {
+  const inp = document.getElementById('f-listingurl');
   const msg = document.getElementById('listingurl-msg');
-  if (msg) msg.textContent = 'Address set. Pull full info via RentCast below, or fill in manually.';
-  const rcRow = document.getElementById('link-rcpull-row');
-  if (rcRow) rcRow.hidden = false;
-  refreshRcUsageLabels();
-  const ziggyRow = document.getElementById('link-ziggy-row');
-  if (ziggyRow) ziggyRow.hidden = false;
+  const flow = document.getElementById('agent-flow');
+  const url = (inp.value || '').trim();
+  const parsed = parseListingUrl(url);
+  if (!parsed) {
+    if (msg) msg.textContent = "Couldn't read that link — paste the address manually or try another listing site (Zillow, Redfin, Realtor.com, Homes.com, Compass, LoopNet, Crexi).";
+    if (flow) flow.hidden = true;
+    agentState.parsed = null;
+    agentState.url = '';
+    return;
+  }
+  lastListingUrl = url;
+  agentState.parsed = parsed;
+  agentState.url = url;
+  agentState.coords = null;
+  agentState.geocoding = true;
+  if (flow) flow.hidden = false;
+  renderAgentPills();
+  const head = document.getElementById('agent-head');
+  if (head) head.innerHTML = '📍 <strong>' + esc(parsed.address) + '</strong>';
+  const found = document.getElementById('agent-found');
+  if (found) found.textContent = 'Agent found the address — add price + rent and I\'ll run it.';
+  if (msg) msg.textContent = '';
+  renderAgentIntel();
+  const zr = document.getElementById('agent-ziggy-row');
+  if (zr) zr.hidden = false;
+  try {
+    const c = await geocodeAddress(parsed.address);
+    agentState.geocoding = false;
+    if (c && agentState.parsed === parsed) { agentState.coords = c; renderAgentIntel(); }
+  } catch (e) { agentState.geocoding = false; }
 }
 
 function wireListingIntake() {
   const btn = document.getElementById('listingurl-pull');
-  if (!btn) return;
-  btn.addEventListener('click', () => {
-    const inp = document.getElementById('f-listingurl');
-    const msg = document.getElementById('listingurl-msg');
-    const linksBox = document.getElementById('link-intel-links');
-    const ziggyRow = document.getElementById('link-ziggy-row');
-    const url = (inp.value || '').trim();
-    const parsed = parseListingUrl(url);
-    if (!parsed) {
-      if (msg) msg.textContent = "Couldn't read that link — paste the address manually or try another listing site.";
-      if (linksBox) linksBox.innerHTML = '';
-      if (ziggyRow) ziggyRow.hidden = true;
-      const rcRow0 = document.getElementById('link-rcpull-row');
-      if (rcRow0) rcRow0.hidden = true;
-      lastListingUrl = '';
-      return;
-    }
-    lastListingUrl = url;
-    intakeFromAddress(parsed.address);
-    if (msg) msg.textContent = 'Address pulled from ' + parsed.source + '. Add price + rent manually, pull full info via RentCast below, or ask Ziggy to pull the full listing.';
-    const showZiggy = () => { if (ziggyRow) ziggyRow.hidden = false; };
-    // Explicit opt-in RentCast pull — never auto-runs. Button + usage sub-label.
-    const rcBtn = document.getElementById('listingurl-rcpull');
-    refreshRcUsageLabels();
-    if (rcBtn && !rcBtn.dataset.wired) {
-      rcBtn.dataset.wired = '1';
-      rcBtn.addEventListener('click', async () => {
-        const addr = ((document.getElementById('f-addr') || {}).value || '').trim();
-        if (!addr) return;
-        if (!loadRcKey()) { rcGotoSetup(msg); return; }
-        rcBtn.disabled = true;
-        if (msg) msg.textContent = 'Pulling listing data via RentCast…';
-        await intakeRcPull({ address: addr, source: (parseListingUrl(lastListingUrl) || {}).source || 'manual' }, false);
-        rcBtn.disabled = false;
-      });
-    }
-    showZiggy();
-    if (!loadRcKey()) appendRcSetupNudge();
-  });
-  const zb = document.getElementById('listingurl-ziggy');
-  if (zb) zb.addEventListener('click', () => {
-    if (!lastListingUrl) return;
-    const text = 'Pull this listing into DealLens: ' + lastListingUrl;
-    const done = () => {
-      const h = document.getElementById('listingurl-ziggy-hint');
-      if (h) h.textContent = "Copied — paste that to Ziggy in chat. He'll reply with a link that opens DealLens fully filled in.";
-    };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
-    } else fallbackCopy(text, done);
-  });
+  if (btn && !btn.dataset.wired) {
+    btn.dataset.wired = '1';
+    btn.addEventListener('click', onAgentParse);
+  }
+  const loans = document.getElementById('agent-loans');
+  if (loans && !loans.dataset.wired) {
+    loans.dataset.wired = '1';
+    loans.addEventListener('change', e => { if (e.target.name === 'agent-loan') agentState.loan = e.target.value; });
+  }
+  const strats = document.getElementById('agent-strats');
+  if (strats && !strats.dataset.wired) {
+    strats.dataset.wired = '1';
+    strats.addEventListener('change', e => {
+      if (e.target.name === 'agent-strat') { agentState.strategy = e.target.value; syncAgentInputs(); }
+    });
+  }
+  const run = document.getElementById('agent-run');
+  if (run && !run.dataset.wired) {
+    run.dataset.wired = '1';
+    run.addEventListener('click', agentRunAnalysis);
+  }
+  const zb = document.getElementById('agent-ziggy');
+  if (zb && !zb.dataset.wired) {
+    zb.dataset.wired = '1';
+    zb.addEventListener('click', () => {
+      if (!agentState.url) return;
+      const text = 'Pull this listing into DealLens: ' + agentState.url;
+      const done = () => {
+        const h = document.getElementById('agent-ziggy-hint');
+        if (h) h.textContent = "Copied — paste that to Ziggy in chat. He'll reply with a link that opens DealLens fully filled in.";
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+      else fallbackCopy(text, done);
+    });
+  }
+}
+/* ================= Rehab estimator + new-build comp =================
+   Treasure Coast rough $/sqft averages — honest ranges, not quotes.
+   Pure math functions are node-testable; the cards render in results. */
+const REPAIR_TIERS = [
+  { key: 'ready', label: 'Move-in ready', rate: 5 },
+  { key: 'light', label: 'Light cosmetic', rate: 18 },
+  { key: 'moderate', label: 'Moderate rehab', rate: 42 },
+  { key: 'gut', label: 'Full gut', rate: 85 },
+];
+function repairEstimate(sqft, tierKey) {
+  const t = REPAIR_TIERS.find(x => x.key === tierKey) || REPAIR_TIERS[2];
+  const s = Math.max(0, +sqft || 0);
+  return { key: t.key, label: t.label, rate: t.rate, sqft: s, total: Math.round(s * t.rate) };
+}
+function newBuildEstimate(sqft, rate) {
+  const s = Math.max(0, +sqft || 0), r = Math.max(0, +rate || 0);
+  return Math.round(s * r);
+}
+function dealSqft(deal) {
+  const it = deal.intel || {};
+  return +(it.sqft) || +((deal.rcData && deal.rcData.sqft) || 0) || 0;
 }
 
-function handleRentcastResult(res, parsed) {
-  const msg = document.getElementById('listingurl-msg');
-  const ziggyRow = document.getElementById('link-ziggy-row');
-  if (!res.ok) {
-    if (msg) msg.textContent = res.message + ' Fill in manually, or tap below and Ziggy will pull the full listing.';
-    if (ziggyRow) ziggyRow.hidden = false;
-    return;
-  }
-  lastRcData = res;
-  applyRentcastFills(rentcastFills(res));
-  if (msg) {
-    if (res.cached) {
-      msg.textContent = 'Loaded from cache · 0 calls used. Review the filled values, then hit Run analysis.';
-      appendRcRepull(msg, () => intakeRcPull(parsed, true));
-    } else {
-      msg.textContent = 'Enriched via RentCast · ' + (res.attempts || 4) + ' calls used.' +
-        (res.partial ? ' (Some fields were unavailable.)' : '') +
-        ' Review the filled values, then hit Run analysis.';
-    }
-  }
-  if (ziggyRow) ziggyRow.hidden = true;
+function rehabEstimateCardHtml(deal) {
+  const sqft = dealSqft(deal);
+  const strat = deal.strategy || 'buy';
+  const pills = REPAIR_TIERS.map((t, i) =>
+    '<label class="radio-pill"><input type="radio" name="rehab-tier" value="' + t.key + '"' +
+    (i === 2 ? ' checked' : '') + '> ' + esc(t.label) + ' ($' + t.rate + '/sqft)</label>').join('');
+  const body = sqft > 0
+    ? '<div id="rehab-est-line" style="margin-top:10px"></div>' +
+      (strat === 'flip'
+        ? '<p style="margin-top:8px"><button type="button" class="btn secondary" id="rehab-use-btn">Use as rehab budget</button> ' +
+          '<span class="tip">fills the flip rehab field and re-runs</span></p>'
+        : '')
+    : '<p class="tip">Add square footage (property intel) to estimate.</p>';
+  return '<div class="card no-print"><h3>Rehab estimate ' +
+    '<span class="hint" style="font-weight:400;color:var(--muted-fg)">Treasure Coast averages — rough</span></h3>' +
+    '<div class="radio-group" role="radiogroup" aria-label="Condition">' + pills + '</div>' + body + '</div>';
 }
 
-function appendRcSetupNudge() {
-  const msg = document.getElementById('listingurl-msg');
-  if (!msg || document.getElementById('rc-setup-nudge')) return;
-  const a = document.createElement('a');
-  a.id = 'rc-setup-nudge';
-  a.href = '#/setup';
-  a.textContent = 'Add a RentCast key in Setup to enable full-info pulls.';
-  a.style.cssText = 'margin-left:8px;color:var(--accent)';
-  msg.appendChild(document.createTextNode(' '));
-  msg.appendChild(a);
+function renderRehabLine(deal) {
+  const line = document.getElementById('rehab-est-line');
+  if (!line) return;
+  const sel = document.querySelector('input[name="rehab-tier"]:checked');
+  const est = repairEstimate(dealSqft(deal), sel ? sel.value : 'moderate');
+  line.innerHTML = '<p style="margin:0"><strong>' + esc(est.label) + '</strong> × ' +
+    Math.round(est.sqft).toLocaleString('en-US') + ' sqft @ $' + est.rate + ' = <strong>' +
+    fmt$(est.total) + '</strong></p>' +
+    '<p class="tip" style="margin:4px 0 0">Rough average — get contractor bids before you offer.</p>';
+  line.dataset.estTotal = est.total;
+}
+
+function newBuildCompCardHtml(deal) {
+  const sqft = dealSqft(deal);
+  const strat = deal.strategy || 'buy';
+  const refPrice = strat === 'build'
+    ? ((deal.metrics && deal.metrics.totalCost) || 0)
+    : (deal.price || 0);
+  const refLabel = strat === 'build' ? 'total project cost' : 'listing price';
+  const body = sqft > 0
+    ? '<div class="field" style="max-width:240px"><label for="nb-rate">Build cost ($/sqft) ' +
+      '<span class="hint">Treasure Coast new-build avg</span></label>' +
+      '<input id="nb-rate" type="number" min="1" value="175"></div>' +
+      '<div id="nb-line" style="margin-top:8px"></div>'
+    : '<p class="tip">Add square footage (property intel) to compare.</p>';
+  return '<div class="card no-print" data-nb-ref="' + Math.round(refPrice) + '" data-nb-reflabel="' + esc(refLabel) + '">' +
+    '<h3>New construction check</h3>' + body + '</div>';
+}
+
+function renderNbLine(deal) {
+  const line = document.getElementById('nb-line');
+  const rateEl = document.getElementById('nb-rate');
+  if (!line || !rateEl) return;
+  const rate = Math.max(1, parseFloat(rateEl.value) || 175);
+  const sqft = dealSqft(deal);
+  const est = newBuildEstimate(sqft, rate);
+  const card = line.closest('[data-nb-ref]');
+  const ref = card ? +card.dataset.nbRef : 0;
+  const refLabel = card ? card.dataset.nbReflabel : 'listing price';
+  let cmp = '';
+  if (ref > 0 && est > 0) {
+    const diff = ref - est;
+    cmp = ' ' + esc(refLabel.charAt(0).toUpperCase() + refLabel.slice(1)) + ' ' + fmt$(ref) +
+      ' vs ~' + fmt$(est) + ' to build new — ' +
+      (diff === 0 ? 'about even.' : 'the ' + refLabel + ' is ' + fmt$(Math.abs(diff)) + (diff < 0 ? ' under' : ' over') + ' new-build cost.');
+  }
+  line.innerHTML = '<p style="margin:0">Building ' + Math.round(sqft).toLocaleString('en-US') +
+    ' sqft new would cost ~<strong>' + fmt$(est) + '</strong> at $' + Math.round(rate) + '/sqft.' + cmp + '</p>' +
+    '<p class="tip" style="margin:4px 0 0">No depreciation math — just both numbers side by side.</p>';
+}
+
+/* Wire the estimator cards after results render (per-render elements). */
+function wireEstimatorCards(deal) {
+  renderRehabLine(deal);
+  document.querySelectorAll('input[name="rehab-tier"]').forEach(r =>
+    r.addEventListener('change', () => renderRehabLine(deal)));
+  const useBtn = document.getElementById('rehab-use-btn');
+  if (useBtn) useBtn.addEventListener('click', () => {
+    const line = document.getElementById('rehab-est-line');
+    const total = line ? +line.dataset.estTotal : 0;
+    if (!(total > 0)) return;
+    deal.flip = deal.flip || {};
+    deal.flip.rehab = total;
+    analyzeDeal(deal);
+    upsertDeal(deal);
+    renderResults(deal.id);
+  });
+  renderNbLine(deal);
+  const nbRate = document.getElementById('nb-rate');
+  if (nbRate) nbRate.addEventListener('input', () => renderNbLine(deal));
 }
 
 /* Explicit opt-in RentCast pull shared by the intake card and the results view.
@@ -2012,20 +2363,6 @@ async function gatedRentcastPull(address, opts) {
     rcCacheSet(ckey, data);
   }
   return res;
-}
-
-/* Intake-card pull flow: factored so the "Re-pull fresh" link can reuse it. */
-async function intakeRcPull(parsed, force) {
-  const msg = (typeof document !== 'undefined') && document.getElementById('listingurl-msg');
-  const res = await gatedRentcastPull(parsed.address, { force: !!force });
-  if (!res.ok && (res.reason === 'cancelled' || res.reason === 'no-key')) {
-    if (msg) {
-      if (res.reason === 'no-key') rcGotoSetup(msg);
-      else msg.textContent = 'Address pulled from ' + parsed.source + '. Pull cancelled — no calls used.';
-    }
-    return;
-  }
-  handleRentcastResult(res, parsed);
 }
 
 /* "Re-pull fresh" link — bypasses the cache, same confirm dialog. */
@@ -2089,18 +2426,35 @@ function refreshRcUsageLabels() {
     if (el) { el.textContent = text; if (el.classList) el.classList.toggle('rc-low', low); }
   };
   set('rc-usage', u.used + ' of ' + RC_FREE_LIMIT + ' free calls used this month.');
-  set('listingurl-rcpull-sub', 'Uses ~4 calls · ' + u.used + ' of ' + RC_FREE_LIMIT + ' free used this month');
   set('rc-enrich-sub', 'Uses ~4 calls · ' + u.used + ' of ' + RC_FREE_LIMIT + ' free used this month');
   set('fd-sub', '1 call per search · ' + u.used + ' of ' + RC_FREE_LIMIT + ' free used this month');
 }
 
 /* ================= Results-view enrichment (Buy & Hold) ================= */
-function rcEnrichCardHtml() {
+/* "Dig deeper" card — RentCast is the deep-dive on GOOD deals, not the entry
+   step. Prominent when the deal scores >= 60; for weaker deals a subtle link
+   sits under the intel card instead. Reuses the existing gated pull flow
+   (key gate → cache → confirm → usage counter) via wireRcEnrich. */
+function digDeeperCardHtml(deal) {
   const u = rcUsage();
-  return `<div class="card no-print"><h3>Enrich this analysis</h3>
-    <p><button type="button" class="btn" id="rc-enrich-btn">Enrich this analysis with RentCast</button>
+  return `<div class="card no-print"><h3>Dig deeper with RentCast</h3>
+    <p>This one scores <strong>${deal.score}</strong> — pull tax history, AVM, photos and DOM?</p>
+    <p><button type="button" class="btn" id="rc-enrich-btn">Pull full info via RentCast</button>
     <span class="tip${u.used >= RC_WARN_AT ? ' rc-low' : ''}" id="rc-enrich-sub">Uses ~4 calls · ${u.used} of ${RC_FREE_LIMIT} free used this month</span></p>
     <p class="tip" id="rc-enrich-msg" role="status"></p></div>`;
+}
+
+/* Fill the dig-deeper slot: full card for score >= 60 (or forced), else empty.
+   The subtle link under the intel card calls this with force=true. */
+function renderDigDeeper(deal, force) {
+  const slot = document.getElementById('dig-deeper-slot');
+  if (!slot) return;
+  if (force || (deal.score || 0) >= 60) {
+    slot.innerHTML = digDeeperCardHtml(deal);
+    wireRcEnrich(deal);
+  } else {
+    slot.innerHTML = '';
+  }
 }
 
 /* Pure: apply normalized RentCast data to a deal object in place. */
@@ -2548,7 +2902,8 @@ if (typeof module !== 'undefined' && module.exports) {
     rentcastLookup, rentcastFetch, normalizeRentcast, rentcastFills, applyRentcastFills, loadRcKey, saveRcKey, clearRcKey, RC_BASE, LS_RC,
     gatedRentcastPull, applyRentcastToDeal, rcUsage, rcUsageAdd, rcMonthStr, LS_RC_USAGE, RC_FREE_LIMIT, RC_WARN_AT, refreshRcUsageLabels,
     rcCacheNorm, rcCacheRead, rcCacheGet, rcCacheSet, LS_RC_CACHE, RC_PULL_TTL_MS, RC_SEARCH_TTL_MS, RC_CACHE_MAX,
-    rentcastSearch, normalizeSearchResults, parseLocationInput, fillIntakeAddress, intakeFromAddress });
+    rentcastSearch, normalizeSearchResults, parseLocationInput, fillIntakeAddress, intakeFromAddress,
+    geocodeAddress, repairEstimate, newBuildEstimate, permitLinksHtml, dealSqft, agentPatch, REPAIR_TIERS, renderDigDeeper, digDeeperCardHtml });
 }
 
 function init() {
