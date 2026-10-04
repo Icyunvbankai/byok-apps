@@ -1862,6 +1862,7 @@ async function rentcastFetch(path, key, timeoutMs) {
       signal: ctrl.signal,
     });
     if (res.status === 401) return rcErr('bad-key', 'RentCast rejected the key — check it in Setup.');
+    if (res.status === 403) return rcErr('forbidden', 'RentCast blocked this key (403). In your RentCast dashboard: 1) make sure the free plan is selected for this key, 2) remove any IP or endpoint restrictions. Then try again.');
     if (res.status === 429) return rcErr('rate-limit', 'RentCast rate limit hit (free tier: 50 lookups/month).');
     if (!res.ok) return rcErr('http', 'RentCast error (HTTP ' + res.status + ') — try again.');
     const json = await res.json();
@@ -1931,7 +1932,7 @@ async function rentcastLookup(address) {
     fire('/avm/rent/long-term?address=' + enc, key),
   ]);
   const results = [prop, listing, avmV, avmR];
-  const fatal = results.find(r => !r.ok && (r.reason === 'bad-key' || r.reason === 'rate-limit'));
+  const fatal = results.find(r => !r.ok && (r.reason === 'bad-key' || r.reason === 'rate-limit' || r.reason === 'forbidden'));
   if (fatal) { fatal.attempts = attempts; return fatal; }
   if (!results.some(r => r.ok)) { const e = results.find(r => !r.ok); e.attempts = attempts; return e; }
   const data = normalizeRentcast(
