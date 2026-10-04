@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vestr — Know what your equity will cost you in taxes</title>
+<meta name="description" content="BYOK RSU/ISO/NSO tax planner. Your API key, your compute — deterministic tax math with zero inference cost to us. Educational estimates only, not tax advice.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header no-print">
+  <div class="header-inner">
+    <a class="logo" href="#/" data-nav="landing">Vestr</a>
+    <nav class="nav" aria-label="Main">
+      <button data-nav="grants">Grants</button>
+      <button data-nav="lab">Strategy Lab</button>
+      <button data-nav="history">History</button>
+      <button data-nav="setup">API Key</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ============ LANDING ============ -->
+  <section class="view" id="view-landing" aria-label="Welcome">
+    <div class="disclaimer-bar" role="note">
+      <strong>Not tax advice.</strong> Vestr is an educational planning tool only. Tax law is complex and changes often — always consult a licensed CPA or tax advisor before making exercise, sale, or withholding decisions.
+    </div>
+
+    <div class="hero">
+      <span class="kicker">BYOK &middot; your key, your compute</span>
+      <h1>Your equity, minus the tax surprises.</h1>
+      <p class="lead">Paste in your RSUs, ISOs, and NSOs. Vestr computes the tax on every vest and exercise in code — then drafts your quarter-by-quarter action plan. You bring your own AI key, so a strategy run costs you pennies.</p>
+      <p style="margin-top:8px">
+        <button class="btn" data-nav="grants">Add your first grant</button>
+        <button class="btn secondary" data-nav="setup" style="margin-left:8px">Set up API key</button>
+      </p>
+    </div>
+
+    <div class="card amt-callout">
+      <h3>The AMT trap, in one line</h3>
+      <p>For 2026, the AMT exemption starts phasing out at <strong>$500k</strong> of income (single) — down from $626k. Exercising a pile of ISOs without modeling it first is how five-figure surprise tax bills happen. Vestr's AMT watchdog flags it <em>before</em> you exercise.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step"><span class="n">1</span><h3>Enter your grants</h3><p>RSUs, ISOs, NSOs — type, strike, FMV, vesting schedule, state. Saved in this browser, reusable across sessions.</p></div>
+      <div class="step"><span class="n">2</span><h3>We do the math</h3><p>Bargain elements, AMT preference, withholding shortfalls — computed deterministically in code. The AI narrates; it never does your arithmetic.</p></div>
+      <div class="step"><span class="n">3</span><h3>Get the quarter plan</h3><p>A quarter-by-quarter exercise/sell timeline, a "what to do this quarter" checklist, and side-by-side scenario comparison.</p></div>
+    </div>
+
+    <div class="sample-strip" aria-label="Sample output">
+      <div class="stat"><div class="v">$38,400</div><div class="l">est. tax on next vest</div></div>
+      <div class="stat"><div class="v">$112k</div><div class="l">AMT preference flagged</div></div>
+      <div class="stat"><div class="v">72</div><div class="l">urgency score</div></div>
+      <div class="stat"><div class="v">$0.03</div><div class="l">est. AI cost per run</div></div>
+    </div>
+
+    <div class="card">
+      <h3>How BYOK pricing works</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem">Vestr runs on <strong style="color:var(--fg)">your</strong> OpenAI, xAI, or Anthropic key — pasted once, stored only in this browser, never on our servers. A full strategy run costs roughly <strong style="color:var(--fg)">$0.01–0.04</strong> of your own API credit. We charge for the planning engine, not the tokens.</p>
+      <p style="margin-top:12px"><button class="btn secondary" data-nav="pricing">See plans</button></p>
+    </div>
+
+    <div class="card">
+      <h3>FAQ</h3>
+      <details class="faq"><summary>Do I need an API key?</summary><p>For the AI-drafted action list, yes — any OpenAI, xAI, or Anthropic key works, and the deterministic tax math runs without one. Keys stay in your browser's local storage.</p></details>
+      <details class="faq"><summary>Is this tax advice?</summary><p>No. Vestr produces educational estimates from the tax tables we ship with it. Tax law is complex and personal — run everything past a licensed CPA before acting.</p></details>
+      <details class="faq"><summary>Which equity types are supported?</summary><p>RSUs, ISOs, and NSOs, with monthly or quarterly vesting, cliffs, and custom schedules. 83(b) elections and disqualifying dispositions are modeled as scenarios.</p></details>
+      <details class="faq"><summary>Where does my data go?</summary><p>Nowhere. Grants, runs, and your API key live in this browser's localStorage. There is no Vestr server.</p></details>
+    </div>
+  </section>
+
+  <!-- ============ SETUP ============ -->
+  <section class="view" id="view-setup" aria-label="API key setup">
+    <h1>Bring your own key</h1>
+    <p class="lead" style="margin-bottom:20px">Pick a provider, paste a key. It stays in this browser's local storage — it is never sent to our servers. Every AI call goes straight from your browser to the provider.</p>
+
+    <div class="notice">New to API keys? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI keys</a> &middot; <a href="https://console.x.ai" target="_blank" rel="noopener">xAI console</a> &middot; <a href="https://console.anthropic.com" target="_blank" rel="noopener">Anthropic console</a>. Set a small spend limit (e.g. $5) on your provider account.</div>
+    <div class="notice warn" id="anthropic-note" hidden>Heads up: Anthropic's API sometimes blocks direct browser calls (CORS). If the key test fails below, OpenAI or xAI will work fine — or run Anthropic through a tiny proxy.</div>
+
+    <div class="card">
+      <div class="provider-cards" role="radiogroup" aria-label="Provider">
+        <label class="provider" data-provider="openai">
+          <input type="radio" name="provider" value="openai" checked>
+          <strong>OpenAI</strong><small>gpt-4o-mini default &middot; ~$0.01–0.04/run</small>
+        </label>
+        <label class="provider" data-provider="xai">
+          <input type="radio" name="provider" value="xai">
+          <strong>xAI</strong><small>grok-3-mini default &middot; ~$0.01–0.04/run</small>
+        </label>
+        <label class="provider" data-provider="anthropic">
+          <input type="radio" name="provider" value="anthropic">
+          <strong>Anthropic</strong><small>claude-haiku-4-5 default &middot; ~$0.02–0.05/run</small>
+        </label>
+      </div>
+
+      <div class="field">
+        <label for="api-key">API key</label>
+        <input type="password" id="api-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+        <p class="tip">Stored only in this browser (localStorage). Clear it anytime below.</p>
+      </div>
+
+      <div class="field">
+        <label for="model">Model <span class="hint">(editable — use what you like)</span></label>
+        <input type="text" id="model" value="gpt-4o-mini" spellcheck="false">
+        <p class="tip" id="model-hint">Mini-class models are plenty for narrating pre-computed numbers.</p>
+      </div>
+
+      <p>
+        <button class="btn" id="test-key-btn">Test key</button>
+        <button class="btn secondary" id="save-key-btn" style="margin-left:8px">Save key</button>
+      </p>
+      <p class="error" id="key-error" role="alert"></p>
+      <p class="success" id="key-success" role="status"></p>
+
+      <p style="margin-top:16px"><button class="btn danger-ghost" id="clear-key-btn">Remove saved key</button></p>
+    </div>
+  </section>
+
+  <!-- ============ GRANTS ============ -->
+  <section class="view" id="view-grants" aria-label="Equity grants">
+    <h1>Your grants</h1>
+    <p class="lead" style="margin-bottom:16px">Your full equity picture lives here, in this browser. Add each grant once — vesting, FMV, and scenarios stay current from here.</p>
+    <div class="notice warn" id="grants-no-key" hidden>You haven't saved an API key yet — the tax math runs fine without one, but the AI-drafted action list needs it. <a href="#/setup" data-nav="setup">Set it up</a> (30 seconds).</div>
+    <p class="no-print" style="margin-bottom:16px"><button class="btn" id="add-grant-btn">+ Add grant</button></p>
+
+    <div id="grant-form-wrap" hidden>
+      <div class="card">
+        <h3 id="grant-form-title">Add grant</h3>
+        <input type="hidden" id="grant-id" value="">
+        <div class="grid2">
+          <div class="field"><label for="g-name">Company / label</label><input id="g-name" placeholder="Acme Corp"></div>
+          <div class="field"><label for="g-type">Grant type</label>
+            <select id="g-type"><option value="RSU">RSU — restricted stock units</option><option value="ISO">ISO — incentive stock options</option><option value="NSO">NSO — non-qualified stock options</option></select>
+          </div>
+          <div class="field"><label for="g-qty">Quantity (shares)</label><input id="g-qty" type="number" min="1" step="1" placeholder="4000"></div>
+          <div class="field" id="g-strike-wrap"><label for="g-strike">Strike price ($/share) <span class="hint">options only</span></label><input id="g-strike" type="number" min="0" step="0.01" placeholder="10.00"></div>
+          <div class="field"><label for="g-fmv">Current FMV ($/share)</label><input id="g-fmv" type="number" min="0" step="0.01" placeholder="50.00"></div>
+          <div class="field"><label for="g-fmv-asof">FMV as of <span class="hint">(we flag it if stale &gt; 90 days)</span></label><input id="g-fmv-asof" type="date"></div>
+          <div class="field"><label for="g-grant-date">Grant date</label><input id="g-grant-date" type="date"></div>
+          <div class="field"><label for="g-state">State of residence</label><select id="g-state"></select></div>
+          <div class="field"><label for="g-cliff">Cliff (months)</label><input id="g-cliff" type="number" min="0" max="48" step="1" value="12"></div>
+          <div class="field"><label for="g-vest-months">Total vesting (months)</label><input id="g-vest-months" type="number" min="1" max="120" step="1" value="48"></div>
+          <div class="field"><label for="g-freq">Vesting frequency <span class="hint">(after cliff)</span></label>
+            <select id="g-freq"><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option></select>
+          </div>
+          <div class="field"><label for="g-notes">Notes <span class="hint">(optional)</span></label><input id="g-notes" placeholder="e.g. early-exercise eligible"></div>
+        </div>
+        <details class="assume">
+          <summary>Custom vesting schedule (optional — overrides the cliff/frequency above)</summary>
+          <div class="body">
+            <div class="field"><label for="g-custom">One event per line: <span class="hint">YYYY-MM-DD, shares</span></label>
+            <textarea id="g-custom" rows="4" placeholder="2026-06-15, 250&#10;2026-09-15, 250" spellcheck="false"></textarea></div>
+          </div>
+        </details>
+        <p><button class="btn" id="grant-save-btn">Save grant</button>
+        <button class="btn secondary" id="grant-cancel-btn" style="margin-left:8px">Cancel</button></p>
+        <p class="error" id="grant-error" role="alert"></p>
+      </div>
+    </div>
+
+    <div id="grants-list"></div>
+  </section>
+
+  <!-- ============ STRATEGY LAB ============ -->
+  <section class="view" id="view-lab" aria-label="Strategy lab">
+    <h1>Strategy lab</h1>
+    <p class="lead" style="margin-bottom:20px">Pick a strategy per grant. The engine recomputes tax per action and year totals — then the AI drafts your quarter checklist from those numbers.</p>
+    <div class="notice warn" id="lab-no-grants" hidden>No grants yet. <a href="#/grants" data-nav="grants">Add your first grant</a> to start modeling.</div>
+    <div id="lab-grants"></div>
+    <div class="card no-print" id="lab-run-card" hidden>
+      <h3>Run the strategy</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem;margin-bottom:12px">Engine math is free and instant. The AI pass (sanity check, action list, do-nothing analysis, CPA questions) runs on your key at roughly $0.01–0.04.</p>
+      <p><button class="btn block" id="lab-run-btn">Run strategy</button></p>
+      <p class="error" id="lab-error" role="alert"></p>
+    </div>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section class="view" id="view-results" aria-label="Strategy results">
+    <div id="results-content"></div>
+    <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="print-btn">Export PDF (print)</button>
+      <button class="btn secondary" id="save-a-btn">Save as Scenario A</button>
+      <button class="btn secondary" id="save-b-btn">Save as Scenario B</button>
+      <button class="btn secondary" data-nav="lab">Back to lab</button>
+    </p>
+    <div class="print-only disclaimer-bar">
+      <strong>Not tax advice.</strong> This report contains educational estimates only, generated by Vestr's deterministic planning engine. Tax law is complex and changes often — consult a licensed CPA or tax advisor before making exercise, sale, or withholding decisions.
+    </div>
+  </section>
+
+  <!-- ============ COMPARE ============ -->
+  <section class="view" id="view-compare" aria-label="Compare scenarios">
+    <h1>Scenario compare</h1>
+    <p class="lead" style="margin-bottom:16px">Two strategies, side by side. Same grants, same FMV — different timing, different tax.</p>
+    <div class="card no-print">
+      <div class="grid2">
+        <div class="field"><label for="compare-a-sel">Scenario A</label><select id="compare-a-sel"></select></div>
+        <div class="field"><label for="compare-b-sel">Scenario B</label><select id="compare-b-sel"></select></div>
+      </div>
+      <p><button class="btn" id="compare-run-btn">Compare</button>
+      <button class="btn secondary" data-nav="history" style="margin-left:8px">Back to history</button></p>
+    </div>
+    <div class="compare-table-wrap card"><div id="compare-content"><p style="color:var(--muted-fg)">Save two scenarios from a results page, then compare them here.</p></div></div>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section class="view" id="view-history" aria-label="History">
+    <h1>Saved strategies</h1>
+    <p class="lead" style="margin-bottom:16px">Every run lives in this browser. Update an FMV in Grants, re-run, and watch the plan move.</p>
+    <div id="history-list"></div>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section class="view" id="view-pricing" aria-label="Pricing">
+    <h1>Pricing</h1>
+    <p class="lead" style="margin-bottom:20px">One avoided AMT surprise pays for years. Priced below a single hour of a CPA.</p>
+    <div class="steps">
+      <div class="step"><h3>Monthly</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$19<span style="font-size:.9rem;color:var(--muted-fg)">/mo</span></p><p>Unlimited grants, strategy runs, scenario compare, PDF reports.</p></div>
+      <div class="step"><h3>Annual</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$152<span style="font-size:.9rem;color:var(--fg)">/yr</span></p><p>Everything monthly, 33% off. Equity planning is a multi-year game.</p></div>
+      <div class="step"><h3>Free trial</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">7 days</p><p>Full access. Your API key covers the pennies of compute.</p></div>
+    </div>
+    <div class="notice">Billing isn't wired in this MVP build — checkout arrives with launch. The app is fully usable now with your own key.</div>
+    <div class="disclaimer-bar" role="note"><strong>Not tax advice.</strong> Vestr is an educational planning tool only — always consult a licensed CPA or tax advisor.</div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section class="view" id="view-settings" aria-label="Settings">
+    <h1>Settings</h1>
+    <div class="card">
+      <h3>Tax profile</h3>
+      <div class="grid2">
+        <div class="field"><label for="set-tax-year">Tax year</label><select id="set-tax-year"><option value="2026" selected>2026 (current)</option><option value="2025">2025</option></select></div>
+        <div class="field"><label for="set-filing">Filing status</label><select id="set-filing"><option value="single" selected>Single</option><option value="joint">Married filing jointly</option></select></div>
+        <div class="field"><label for="set-other-income">Other annual income ($) <span class="hint">salary, bonus — sets your marginal bracket</span></label><input id="set-other-income" type="number" min="0" step="1000" value="200000"></div>
+        <div class="field"><label for="set-def-state">Default state</label><select id="set-def-state"></select></div>
+      </div>
+      <p><button class="btn secondary" id="settings-save-btn">Save tax profile</button></p>
+      <p class="success" id="settings-saved" role="status"></p>
+    </div>
+    <div class="card">
+      <h3>API key</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem;margin-bottom:12px">Manage your key on the <a href="#/setup" data-nav="setup" style="color:var(--accent)">setup page</a>.</p>
+      <h3 style="margin-top:16px">Estimated key spend</h3>
+      <p style="font-size:1.4rem;font-weight:700" id="spend-counter">$0.00</p>
+      <p class="tip">Rough estimate of what Vestr's AI passes have cost on your key, all time. Deterministic math is free.</p>
+    </div>
+    <div class="card">
+      <h3>Data</h3>
+      <p style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn secondary" id="export-btn">Export grants (JSON)</button>
+        <label class="btn secondary" for="import-file" style="cursor:pointer">Import grants (JSON)</label>
+        <input type="file" id="import-file" accept="application/json" hidden>
+      </p>
+      <p style="margin-top:16px"><button class="btn danger-ghost" id="clear-data-btn">Delete all local data</button></p>
+      <p class="error" id="settings-error" role="alert"></p>
+    </div>
+  </section>
+</main>
+
+<footer class="site no-print">
+  <p>Vestr is an educational planning tool. Estimates only — <strong>not tax, legal, or financial advice</strong>. Verify every number with a licensed CPA. Your API key never leaves this browser. <a href="#/settings" data-nav="settings" style="color:var(--accent)">Settings</a></p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
