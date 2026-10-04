@@ -105,9 +105,10 @@
     </div>
 
     <div class="card" style="margin-top:16px">
-      <h3>Property data — RentCast <span class="hint" style="font-weight:400;color:var(--muted-fg)">(automatic listing pulls)</span></h3>
+      <h3>Property data — RentCast <span class="hint" style="font-weight:400;color:var(--muted-fg)">(opt-in listing pulls)</span></h3>
       <p class="tip">A free RentCast key lets DealLens pull price, beds/baths, sqft, year built, last sale, days on market, value &amp; rent estimates, and photos straight from a pasted listing link — no Ziggy middleman. <a href="https://app.rentcast.io/" target="_blank" rel="noopener">Get a free key</a>.</p>
       <p class="tip">Free tier: 50 lookups/month &middot; each listing pull uses ~4 &middot; the key stays in this browser only.</p>
+      <p class="tip" id="rc-usage" aria-live="polite"></p>
       <div class="field">
         <label for="rc-key">RentCast API key</label>
         <input type="password" id="rc-key" placeholder="Paste your RentCast key" autocomplete="off" spellcheck="false">
@@ -141,6 +142,10 @@
         <button type="button" class="btn" id="listingurl-pull">Pull listing</button>
       </div>
       <p class="tip" id="listingurl-msg" role="status"></p>
+      <p id="link-rcpull-row" hidden style="margin-top:8px">
+        <button type="button" class="btn" id="listingurl-rcpull">Pull full info via RentCast</button>
+        <span class="tip" id="listingurl-rcpull-sub"></span>
+      </p>
       <div id="link-intel-links" style="margin-top:8px"></div>
       <p id="link-ziggy-row" hidden style="margin-top:8px">
         <button type="button" class="btn secondary" id="listingurl-ziggy">Ask Ziggy to pull the full listing</button>
@@ -292,6 +297,33 @@
   <section class="view" id="view-watch" aria-label="Deal Watch">
     <h1>Deal Watch</h1>
     <p class="lead" style="margin-bottom:20px">Set your criteria once. <strong style="color:var(--fg)">Ziggy runs the hunt on your schedule</strong> — he sweeps public listings, runs each one through the DealLens engine with your loan settings, and sends you the deals that clear your bar.</p>
+
+    <div class="card" id="find-deals-card">
+      <h3>Find deals near me</h3>
+      <p class="tip">Search active RentCast listings by location. Each search costs 1 call — results are cached for 24 hours. Max price is filtered in-app (RentCast's documented sale filters don't include a reliable priceMax).</p>
+      <div class="grid2">
+        <div class="field"><label for="fd-loc">Location</label>
+          <div class="url-row"><input id="fd-loc" placeholder="Fort Pierce, FL or 34950" autocomplete="off" spellcheck="false" style="flex:1">
+          <button type="button" class="btn secondary" id="fd-geo">Use my location</button></div>
+          <p class="tip" id="fd-loc-msg"></p>
+        </div>
+        <div class="field"><label for="fd-radius">Radius <span class="hint">(GPS searches)</span></label>
+          <select id="fd-radius"><option value="5">5 miles</option><option value="10" selected>10 miles</option><option value="25">25 miles</option><option value="50">50 miles</option></select></div>
+        <div class="field"><label for="fd-maxprice">Max price ($)</label><input id="fd-maxprice" type="number" min="1" step="1000" value="400000"></div>
+        <div class="field"><label for="fd-proptype">Property type</label>
+          <select id="fd-proptype">
+            <option value="Multi-Family" selected>Multi-Family</option>
+            <option value="Single Family">Single Family</option>
+            <option value="Condo">Condo</option>
+            <option value="Townhouse">Townhouse</option>
+          </select></div>
+      </div>
+      <p><button type="button" class="btn" id="fd-search">Search (1 call)</button>
+      <span class="tip" id="fd-sub"></span></p>
+      <p class="tip" id="fd-nokey" hidden>No RentCast key saved — searches need one. <a href="#/setup" style="color:var(--accent)">Add it in Setup</a>.</p>
+      <p class="error" id="fd-error" role="alert"></p>
+      <div id="fd-results" style="margin-top:8px"></div>
+    </div>
 
     <div class="card" id="watch-active-card" hidden>
       <h3>Watch active</h3>
