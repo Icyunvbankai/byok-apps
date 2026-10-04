@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EarningsEdge — Read every earnings call like an analyst</title>
+<meta name="description" content="BYOK earnings-call briefing tool. Your API key, your compute — guidance changes, red flags, and bull/bear cases from any transcript in 5 minutes.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header no-print">
+  <div class="header-inner">
+    <a class="logo" href="#/" data-nav="landing">Earnings<span>Edge</span></a>
+    <nav class="nav" aria-label="Main">
+      <button data-nav="new">+ Breakdown</button>
+      <button data-nav="watchlist">Watchlist</button>
+      <button data-nav="setup">API Key</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ============ LANDING ============ -->
+  <section class="view" id="view-landing" aria-label="Welcome">
+    <div class="hero">
+      <span class="kicker">BYOK &middot; your key, your compute</span>
+      <h1>Read every earnings call like an analyst.</h1>
+      <p class="lead">Paste a transcript, get guidance changes, margin commentary, red flags, and a quote-backed bull/bear case — in 5 minutes, not 45. You bring your own AI key, so a breakdown costs you cents.</p>
+      <p style="margin-top:8px">
+        <button class="btn" data-nav="new">Break down a call</button>
+        <button class="btn secondary" data-nav="setup" style="margin-left:8px">Set up API key</button>
+      </p>
+    </div>
+
+    <div class="sample-brief" aria-label="Sample briefing">
+      <div class="bb-col bull">
+        <h3><span class="tag bull">BULL</span> Sample: why the call was strong</h3>
+        <ul>
+          <li>Raised full-year guidance for the second straight quarter <span class="q">&ldquo;we now expect revenue growth of 14 to 16 percent&rdquo;</span></li>
+          <li>Gross margin expanded 120 bps on mix shift <span class="q">&ldquo;software now 38 percent of revenue&rdquo;</span></li>
+        </ul>
+      </div>
+      <div class="bb-col bear">
+        <h3><span class="tag bear">BEAR</span> Sample: what to worry about</h3>
+        <ul>
+          <li>Third straight quarter of inventory build <span class="q">&ldquo;channel inventory remains elevated&rdquo;</span></li>
+          <li>Dodged the buyback question twice <span class="q">&ldquo;we'll update you in due course&rdquo;</span></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sample-strip" aria-label="Why it works">
+      <div class="stat"><div class="v">5 min</div><div class="l">vs 45 min skimming 12,000 words</div></div>
+      <div class="stat"><div class="v">~$0.30</div><div class="l">per breakdown, on your own key</div></div>
+      <div class="stat"><div class="v">0</div><div class="l">price targets — comprehension, not prediction</div></div>
+      <div class="stat"><div class="v">Q/Q</div><div class="l">per-ticker history across quarters</div></div>
+    </div>
+
+    <div class="steps">
+      <div class="step"><span class="n">1</span><h3>Paste the transcript</h3><p>Ticker + quarter, then the call text. Our source helper points you to free transcripts — we never pretend to fetch what we can't.</p></div>
+      <div class="step"><span class="n">2</span><h3>We read it four ways</h3><p>Structured extraction, management tone scoring, an adversarial red-flag pass, then bull/bear synthesis. Every claim carries a transcript quote.</p></div>
+      <div class="step"><span class="n">3</span><h3>Get the brief</h3><p>A 5-line "what actually matters" summary, guidance and margin cards, and a watchlist that tracks the story quarter over quarter.</p></div>
+    </div>
+
+    <div class="card">
+      <h3>How BYOK pricing works</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem">EarningsEdge runs on <strong style="color:var(--fg)">your</strong> OpenAI, xAI, or Anthropic key — pasted once, stored only in this browser, never on our servers. A full breakdown costs roughly <strong style="color:var(--fg)">$0.15–0.60</strong> of your own API credit (long transcripts need big context). Even 10+ breakdowns in an earnings season stays under ~$5 on your key. We charge for the briefing engine, not the tokens.</p>
+      <p style="margin-top:12px"><button class="btn secondary" data-nav="pricing">See plans</button></p>
+    </div>
+
+    <h2>Questions</h2>
+    <details class="faq"><summary>Where do transcripts come from?</summary><div class="body"><p>You paste them in — free sources linked right in the app: <a href="https://www.fool.com/earnings-call-transcripts/" target="_blank" rel="noopener">Motley Fool transcripts</a>, <a href="https://seekingalpha.com/earnings/earnings-call-transcripts" target="_blank" rel="noopener">Seeking Alpha transcripts</a>, and company investor-relations pages. Three steps: open the transcript, copy the full text, paste it here. We validate what you paste (and tell you if it looks like Q&amp;A-only).</p></div></details>
+    <details class="faq"><summary>How much does a breakdown cost on my key?</summary><div class="body"><p>Roughly $0.15–0.60 depending on transcript length and model — the app shows the exact token count and estimated cost after every breakdown. Long transcripts need big-context models; we default to Claude Sonnet for this reason.</p></div></details>
+    <details class="faq"><summary>Do you give buy/sell recommendations or price targets?</summary><div class="body"><p>No — deliberately. We do comprehension, not prediction. You get what management said, what changed, what's risky, and both sides of the case, each tied to a quote. The call is yours.</p></div></details>
+    <details class="faq"><summary>What happens to my transcripts and data?</summary><div class="body"><p>Everything lives in this browser's localStorage — your key, your watchlist, your quarter history. Nothing is sent to our servers. Export or delete it anytime in Settings.</p></div></details>
+  </section>
+
+  <!-- ============ SETUP ============ -->
+  <section class="view" id="view-setup" aria-label="API key setup">
+    <h1>Bring your own key</h1>
+    <p class="lead" style="margin-bottom:20px">Pick a provider, paste a key. It stays in this browser's local storage — it is never sent to our servers. Every AI call goes straight from your browser to the provider.</p>
+
+    <div class="notice">New to API keys? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI keys</a> &middot; <a href="https://console.x.ai" target="_blank" rel="noopener">xAI console</a> &middot; <a href="https://console.anthropic.com" target="_blank" rel="noopener">Anthropic console</a>. Set a small spend limit (e.g. $5) on your provider account.</div>
+    <div class="notice warn" id="anthropic-note" hidden>Heads up: Anthropic's API sometimes blocks direct browser calls (CORS). If the key test fails below, OpenAI or xAI will work fine — or run Anthropic through a tiny proxy.</div>
+
+    <div class="card">
+      <div class="provider-cards" role="radiogroup" aria-label="Provider">
+        <label class="provider" data-provider="openai">
+          <input type="radio" name="provider" value="openai">
+          <strong>OpenAI</strong><small>gpt-4o default &middot; ~$0.15–0.40/breakdown</small>
+        </label>
+        <label class="provider" data-provider="xai">
+          <input type="radio" name="provider" value="xai">
+          <strong>xAI</strong><small>grok-3 default &middot; ~$0.15–0.40/breakdown</small>
+        </label>
+        <label class="provider" data-provider="anthropic">
+          <input type="radio" name="provider" value="anthropic" checked>
+          <strong>Anthropic</strong><small>claude-sonnet-4-5 default &middot; ~$0.40–0.60/breakdown &middot; recommended for long transcripts</small>
+        </label>
+      </div>
+
+      <div class="field">
+        <label for="api-key">API key</label>
+        <input type="password" id="api-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+        <p class="tip">Stored only in this browser (localStorage). Clear it anytime in Settings.</p>
+      </div>
+
+      <div class="field">
+        <label for="model">Model <span class="hint">(editable — use what you like)</span></label>
+        <input type="text" id="model" value="claude-sonnet-4-5" spellcheck="false">
+        <p class="tip" id="model-hint">Transcripts are long — big-context models work best here.</p>
+      </div>
+
+      <p>
+        <button class="btn" id="test-key-btn">Test key</button>
+        <button class="btn secondary" id="save-key-btn" style="margin-left:8px">Save key</button>
+      </p>
+      <p class="error" id="key-error" role="alert"></p>
+      <p class="success" id="key-success" role="status"></p>
+
+      <p style="margin-top:16px"><button class="btn danger-ghost" id="clear-key-btn">Remove saved key</button></p>
+    </div>
+  </section>
+
+  <!-- ============ NEW BREAKDOWN ============ -->
+  <section class="view" id="view-new" aria-label="New breakdown">
+    <h1>New breakdown</h1>
+    <p class="lead" style="margin-bottom:20px">Ticker, quarter, transcript. The deterministic transcript check below runs instantly — the AI chain needs a saved key.</p>
+
+    <div class="notice warn" id="no-key-notice" hidden>You haven't saved an API key yet — the transcript check below still runs, but the 4-pass AI analysis needs one. <a href="#/setup" data-nav="setup">Set it up</a> (30 seconds).</div>
+
+    <form id="breakdown-form" novalidate>
+      <div class="card">
+        <div class="grid2">
+          <div class="field"><label for="f-ticker">Ticker</label><input id="f-ticker" placeholder="AAPL" maxlength="8" autocomplete="off" spellcheck="false" style="text-transform:uppercase"></div>
+          <div class="field"><label for="f-quarter">Quarter</label><input id="f-quarter" placeholder="Q3 2026" autocomplete="off" spellcheck="false"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Transcript</h3>
+        <div class="field">
+          <label for="f-transcript">Paste the full earnings call transcript</label>
+          <textarea id="f-transcript" rows="10" placeholder="Paste the full transcript text here — prepared remarks + Q&A gives the best results…" spellcheck="false"></textarea>
+          <p class="tip"><span id="transcript-count">0 words</span> &middot; <span id="cost-estimate">est. cost shows after paste</span></p>
+        </div>
+        <div id="transcript-intel" aria-live="polite"></div>
+      </div>
+
+      <details class="faq">
+        <summary>Where to get transcripts (3 steps)</summary>
+        <div class="body">
+          <ol style="padding-left:20px;color:var(--muted-fg);font-size:.92rem">
+            <li>Open a free transcript: <a href="https://www.fool.com/earnings-call-transcripts/" target="_blank" rel="noopener">Motley Fool</a>, <a href="https://seekingalpha.com/earnings/earnings-call-transcripts" target="_blank" rel="noopener">Seeking Alpha</a>, or the company's investor-relations page.</li>
+            <li>Select all and copy the full text (prepared remarks <em>and</em> Q&amp;A).</li>
+            <li>Paste it above. We'll validate it instantly and tell you if anything looks off.</li>
+          </ol>
+        </div>
+      </details>
+
+      <p style="margin-top:16px"><button type="submit" class="btn block" id="analyze-btn">Run breakdown</button></p>
+      <p class="error" id="form-error" role="alert"></p>
+    </form>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section class="view" id="view-results" aria-label="Results">
+    <div id="results-content"></div>
+    <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="print-btn">Export PDF (print)</button>
+      <button class="btn secondary" data-nav="new">New breakdown</button>
+      <button class="btn secondary" data-nav="watchlist">Watchlist</button>
+    </p>
+  </section>
+
+  <!-- ============ WATCHLIST ============ -->
+  <section class="view" id="view-watchlist" aria-label="Watchlist">
+    <h1>Watchlist</h1>
+    <p class="lead" style="margin-bottom:16px">Every ticker keeps its quarter-over-quarter story. Comparing Q1 vs Q3 narrative is the whole game.</p>
+    <div id="watchlist-list"></div>
+  </section>
+
+  <!-- ============ TICKER HISTORY ============ -->
+  <section class="view" id="view-ticker" aria-label="Ticker history">
+    <div id="ticker-content"></div>
+    <p><button class="btn secondary" data-nav="watchlist">Back to watchlist</button></p>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section class="view" id="view-pricing" aria-label="Pricing">
+    <h1>Pricing</h1>
+    <p class="lead" style="margin-bottom:20px">Coffee money, priced for earnings season. Usage spikes quarterly — the price stays trivial in off-months.</p>
+    <div class="steps">
+      <div class="step"><h3>Monthly</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$12<span style="font-size:.9rem;color:var(--muted-fg)">/mo</span></p><p>Unlimited breakdowns, watchlist, quarter-over-quarter history, PDF briefs.</p></div>
+      <div class="step"><h3>Annual</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$96<span style="font-size:.9rem;color:var(--muted-fg)">/yr</span></p><p>Everything monthly, 33% off. For earnings-season cyclers.</p></div>
+      <div class="step"><h3>Free trial</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">7 days</p><p>Full access. Your API key covers the cents of compute.</p></div>
+    </div>
+    <div class="card">
+      <h3>What the compute actually costs you</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem">A full breakdown sends ~40–80k tokens in and gets ~3–5k back — roughly <strong style="color:var(--fg)">$0.15–0.60 on your own key</strong> depending on provider and model. Even 10+ breakdowns in a heavy earnings season stays under ~$5. The app shows exact tokens and estimated cost after every run. We charge for the briefing engine, not the tokens.</p>
+    </div>
+    <div class="notice">Billing isn't wired in this MVP build — checkout arrives with launch. The app is fully usable now with your own key.</div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section class="view" id="view-settings" aria-label="Settings">
+    <h1>Settings</h1>
+    <p class="lead" style="margin-bottom:20px">Your data lives in this browser. Manage it here.</p>
+
+    <div class="card">
+      <h3>API key</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem" id="settings-key-status">No key saved.</p>
+      <p style="margin-top:8px"><button class="btn secondary" data-nav="setup">Manage key</button></p>
+    </div>
+
+    <div class="card">
+      <h3>Default models</h3>
+      <p class="tip" style="margin-bottom:12px">Used when you pick a provider in setup. Transcripts are long — big-context models recommended.</p>
+      <div class="field"><label for="set-model-openai">OpenAI default</label><input id="set-model-openai" spellcheck="false"></div>
+      <div class="field"><label for="set-model-xai">xAI default</label><input id="set-model-xai" spellcheck="false"></div>
+      <div class="field"><label for="set-model-anthropic">Anthropic default</label><input id="set-model-anthropic" spellcheck="false"></div>
+      <p><button class="btn secondary" id="save-models-btn">Save defaults</button></p>
+      <p class="success" id="models-success" role="status"></p>
+    </div>
+
+    <div class="card">
+      <h3>Your data</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem;margin-bottom:12px">Watchlist and quarter history are stored only in this browser.</p>
+      <p style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn secondary" id="export-data-btn">Export data (JSON)</button>
+        <button class="btn danger-ghost" id="delete-data-btn">Delete all local data</button>
+      </p>
+      <p class="error" id="settings-error" role="alert"></p>
+      <p class="success" id="settings-success" role="status"></p>
+    </div>
+  </section>
+</main>
+
+<footer class="site no-print">
+  <p>EarningsEdge is an educational research tool — not financial advice. No price targets, no buy/sell recommendations. We do comprehension, not prediction. Verify everything against primary sources. Your API key never leaves this browser.</p>
+  <p style="margin-top:8px"><a href="#/settings" data-nav="settings">Settings</a> &middot; <a href="#/pricing" data-nav="pricing">Pricing</a></p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
