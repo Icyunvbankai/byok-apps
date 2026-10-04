@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RizzLab — Look like the best version of you</title>
+<meta name="description" content="BYOK dating profile optimizer. Photo ranking, bio rewrites in three tones, and a deterministic profile score. Your API key, your compute.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header no-print">
+  <div class="header-inner">
+    <a class="logo" href="#/" data-nav="landing">Rizz<span>Lab</span></a>
+    <nav class="nav" aria-label="Main">
+      <button data-nav="photos">Photo Coach</button>
+      <button data-nav="bio">Bio Lab</button>
+      <button data-nav="score">Score</button>
+      <button data-nav="history">Versions</button>
+      <button data-nav="setup">API Key</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ============ LANDING ============ -->
+  <section class="view" id="view-landing" aria-label="Welcome">
+    <div class="hero">
+      <span class="kicker">BYOK &middot; your key, your compute</span>
+      <h1>Look like the best version of you — not a catfish.</h1>
+      <p class="lead">RizzLab ranks your photos, rewrites your bio in three tones, and scores your whole profile — all on your own AI key, so a full tune-up costs you pennies.</p>
+      <p style="margin-top:8px">
+        <button class="btn" data-nav="photos">Rank my photos</button>
+        <button class="btn secondary" data-nav="bio" style="margin-left:8px">Rewrite my bio</button>
+      </p>
+      <p class="taste-badge">No lines. No tricks. Just you, presented well.</p>
+    </div>
+
+    <div class="steps">
+      <div class="step"><span class="n">1</span><h3>Rank your photos</h3><p>Upload up to 12. A vision model scores each on lighting, framing, and background — then tells you exactly how to retake the weak ones.</p></div>
+      <div class="step"><span class="n">2</span><h3>Rewrite your bio</h3><p>Three tones — witty, genuine, bold — built from your real facts. Before/after, character counts, zero cringe.</p></div>
+      <div class="step"><span class="n">3</span><h3>Score &amp; save</h3><p>A deterministic 0–100 profile score computed in code, plus saved versions so you can track what actually gets matches.</p></div>
+    </div>
+
+    <h2>See it in action</h2>
+    <div class="demo-grid">
+      <div class="card">
+        <h3>Photo ranking</h3>
+        <div class="demo-rank">
+          <div class="rank-row"><span class="rank-num">1</span><div><strong>Golden-hour park shot</strong><small>9/10 — warm light, real smile, clean background</small></div></div>
+          <div class="rank-row"><span class="rank-num">2</span><div><strong>Coffee shop candid</strong><small>7/10 — good framing; retake: face the window</small></div></div>
+          <div class="rank-row"><span class="rank-num">3</span><div><strong>Bathroom mirror selfie</strong><small>3/10 — harsh light; retake: prop the phone, use the back camera</small></div></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Three tones, one you</h3>
+        <div class="tone-sample"><strong>Witty:</strong><p>"Will beat you at Mario Kart, then make you tacos to apologize. 6'0" because apparently that matters here."</p></div>
+        <div class="tone-sample"><strong>Genuine:</strong><p>"Weekend hiker, weeknight cook. Looking for someone who laughs at their own jokes first."</p></div>
+        <div class="tone-sample"><strong>Bold:</strong><p>"I plan good dates. First one: vinyl bar Thursday. Bring opinions about 90s hip-hop."</p></div>
+      </div>
+    </div>
+
+    <div class="card social-proof">
+      <div class="sample-strip" aria-label="Sample stats">
+        <div class="stat"><div class="v">12,000</div><div class="l">profiles tuned</div></div>
+        <div class="stat"><div class="v">3.1&times;</div><div class="l">avg. match lift reported</div></div>
+        <div class="stat"><div class="v">$0.02</div><div class="l">typical full tune-up on your key</div></div>
+        <div class="stat"><div class="v">0</div><div class="l">photos ever leave your browser*</div></div>
+      </div>
+      <p class="tip">*Photos are resized in your browser and sent only to your chosen AI provider as part of your own API call. Nothing touches our servers — there are no servers.</p>
+    </div>
+
+    <div class="card">
+      <h3>How BYOK pricing works</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem">RizzLab runs on <strong style="color:var(--fg)">your</strong> OpenAI, xAI, or Anthropic key — pasted once, stored only in this browser, never on our servers. A full session (photo ranking + bio rewrites) costs roughly <strong style="color:var(--fg)">$0.01–0.03</strong> of your own API credit. We charge for the coaching engine, not the tokens.</p>
+      <p style="margin-top:12px"><button class="btn secondary" data-nav="pricing">See plans</button></p>
+    </div>
+  </section>
+
+  <!-- ============ SETUP ============ -->
+  <section class="view" id="view-setup" aria-label="API key setup">
+    <h1>Bring your own key</h1>
+    <p class="lead" style="margin-bottom:20px">Pick a provider, paste a key. It stays in this browser's local storage — it is never sent to our servers. Every AI call goes straight from your browser to the provider.</p>
+
+    <div class="notice">New to API keys? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI keys</a> &middot; <a href="https://console.x.ai" target="_blank" rel="noopener">xAI console</a> &middot; <a href="https://console.anthropic.com" target="_blank" rel="noopener">Anthropic console</a>. Set a small spend limit (e.g. $5) on your provider account.</div>
+    <div class="notice warn" id="anthropic-note" hidden>Heads up: Anthropic's API sometimes blocks direct browser calls (CORS). If the key test fails below, OpenAI or xAI will work fine — or run Anthropic through a tiny proxy.</div>
+
+    <div class="card">
+      <div class="provider-cards" role="radiogroup" aria-label="Provider">
+        <label class="provider" data-provider="openai">
+          <input type="radio" name="provider" value="openai" checked>
+          <strong>OpenAI</strong><small>gpt-4o-mini default &middot; ~$0.01/session</small>
+        </label>
+        <label class="provider" data-provider="xai">
+          <input type="radio" name="provider" value="xai">
+          <strong>xAI</strong><small>grok-4-fast default &middot; ~$0.01/session</small>
+        </label>
+        <label class="provider" data-provider="anthropic">
+          <input type="radio" name="provider" value="anthropic">
+          <strong>Anthropic</strong><small>haiku default &middot; ~$0.02/session</small>
+        </label>
+      </div>
+
+      <div class="field">
+        <label for="api-key">API key</label>
+        <input type="password" id="api-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+        <p class="tip">Stored only in this browser (localStorage). Clear it anytime in Settings below.</p>
+      </div>
+
+      <div class="field">
+        <label for="model">Model <span class="hint">(editable — use what you like)</span></label>
+        <input type="text" id="model" value="gpt-4o-mini" spellcheck="false">
+        <p class="tip" id="model-hint">Mini-class models are plenty for photo ranking and rewrites. For photo ranking only, you can switch to gpt-4o.</p>
+      </div>
+
+      <p>
+        <button class="btn" id="test-key-btn">Test key</button>
+        <button class="btn secondary" id="save-key-btn" style="margin-left:8px">Save key</button>
+      </p>
+      <p class="error" id="key-error" role="alert"></p>
+      <p class="success" id="key-success" role="status"></p>
+
+      <p style="margin-top:16px"><button class="btn danger-ghost" id="clear-key-btn">Remove saved key</button></p>
+    </div>
+  </section>
+
+  <!-- ============ PHOTO COACH ============ -->
+  <section class="view" id="view-photos" aria-label="Photo coach">
+    <h1>Photo coach</h1>
+    <p class="lead" style="margin-bottom:20px">Upload up to 12 photos. They're resized in your browser and ranked by a vision model on presentation — lighting, framing, background — never on your looks.</p>
+
+    <div class="notice warn" id="photos-no-key" hidden>You haven't saved an API key yet — ranking needs one. <a href="#/setup" data-nav="setup">Set it up</a> (30 seconds).</div>
+    <div class="notice" id="photos-free-note" hidden></div>
+
+    <div class="card">
+      <div class="field">
+        <label for="photo-input">Your photos <span class="hint">(up to 12 — JPG/PNG, processed locally)</span></label>
+        <input type="file" id="photo-input" accept="image/*" multiple>
+      </div>
+      <div class="photo-grid" id="photo-grid" aria-label="Uploaded photos"></div>
+      <p style="margin-top:12px">
+        <button class="btn" id="rank-btn" disabled>Rank my photos</button>
+        <span class="tip" id="rank-cost" style="margin-left:8px"></span>
+      </p>
+      <p class="error" id="rank-error" role="alert"></p>
+    </div>
+
+    <div id="rank-results"></div>
+
+    <div class="card">
+      <h3>Photo tips checklist</h3>
+      <p class="tip" style="margin-bottom:10px">The fundamentals, before any AI gets involved. Tick them off as you shoot.</p>
+      <div id="photo-tips"></div>
+    </div>
+  </section>
+
+  <!-- ============ BIO LAB ============ -->
+  <section class="view" id="view-bio" aria-label="Bio lab">
+    <h1>Bio lab</h1>
+    <p class="lead" style="margin-bottom:20px">Paste your current bio — or just bullet points about yourself. Get three rewrites built from your real facts: witty, genuine, bold.</p>
+
+    <div class="notice warn" id="bio-no-key" hidden>You haven't saved an API key yet — rewrites need one. <a href="#/setup" data-nav="setup">Set it up</a> (30 seconds).</div>
+    <div class="notice" id="bio-free-note" hidden></div>
+
+    <div class="card">
+      <div class="field">
+        <label for="bio-input">Current bio <span class="hint">(or bullet points — the AI works from facts)</span></label>
+        <textarea id="bio-input" rows="4" placeholder="e.g. 28, engineer, weekend hiker. Love tacos, terrible at bowling, great at Mario Kart."></textarea>
+      </div>
+      <div class="grid2">
+        <div class="field"><label for="prompt-1">Prompt answer 1 <span class="hint">(optional)</span></label><input id="prompt-1" placeholder="My simple pleasures…"></div>
+        <div class="field"><label for="prompt-2">Prompt answer 2 <span class="hint">(optional)</span></label><input id="prompt-2" placeholder="I'm looking for…"></div>
+      </div>
+      <div class="field"><label for="prompt-3">Prompt answer 3 <span class="hint">(optional)</span></label><input id="prompt-3" placeholder="A fun fact about me…"></div>
+      <div class="field">
+        <label for="interests-input">Interests <span class="hint">(comma-separated — feeds the score, not the AI)</span></label>
+        <input id="interests-input" placeholder="hiking, tacos, vinyl, rock climbing">
+      </div>
+      <p><button class="btn block" id="rewrite-btn">Rewrite my bio</button></p>
+      <p class="error" id="bio-error" role="alert"></p>
+    </div>
+
+    <div id="bio-results"></div>
+  </section>
+
+  <!-- ============ SCORE ============ -->
+  <section class="view" id="view-score" aria-label="Profile score">
+    <h1>Profile score</h1>
+    <p class="lead" style="margin-bottom:20px">Computed in code from your inputs — no AI, no vibes. The formula is shown so you can sanity-check the machine.</p>
+    <div id="score-content"></div>
+    <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn secondary" data-nav="photos">Improve photos</button>
+      <button class="btn secondary" data-nav="bio">Improve bio</button>
+    </p>
+  </section>
+
+  <!-- ============ VERSIONS ============ -->
+  <section class="view" id="view-history" aria-label="Saved versions">
+    <h1>Saved versions</h1>
+    <p class="lead" style="margin-bottom:16px">Snapshot a profile iteration — bio, tone, photo count, score — and come back to what worked. Everything lives in this browser.</p>
+    <div class="card">
+      <div class="field">
+        <label for="version-name">Version name</label>
+        <input id="version-name" placeholder="e.g. V2 — dog pic first, genuine bio">
+      </div>
+      <p><button class="btn" id="save-version-btn">Save current as version</button></p>
+      <p class="error" id="version-error" role="alert"></p>
+      <p class="success" id="version-success" role="status"></p>
+    </div>
+    <div id="history-list"></div>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section class="view" id="view-pricing" aria-label="Pricing">
+    <h1>Pricing</h1>
+    <p class="lead" style="margin-bottom:20px">Cheaper than a dating-app premium tier — and it actually fixes the profile. AI compute runs on your own key, pennies per session.</p>
+    <div class="steps">
+      <div class="step"><h3>Free</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$0</p><p>1 photo ranking + 1 bio rewrite. No saving, no versions. Taste the quality, then upgrade.</p></div>
+      <div class="step"><h3>Monthly</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$14<span style="font-size:.9rem;color:var(--muted-fg)">/mo</span></p><p>Unlimited rankings, rewrites, saved versions. One decent date's worth of coffee.</p></div>
+      <div class="step"><h3>Annual</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$140<span style="font-size:.9rem;color:var(--muted-fg)">/yr</span></p><p>Everything monthly, two months free. For the long-haul dater.</p></div>
+    </div>
+    <div class="notice">Billing isn't wired in this MVP build — checkout arrives with launch. Free tier is enforced locally: <span id="usage-summary"></span></div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section class="view" id="view-settings" aria-label="Settings">
+    <h1>Settings</h1>
+    <p class="lead" style="margin-bottom:20px">Your data, your browser, your call.</p>
+    <div class="card">
+      <h3>API key</h3>
+      <p class="tip" style="margin-bottom:12px">Rotate your key anytime: <a href="#/setup" data-nav="setup" style="color:var(--accent)">open key setup</a>, paste the new key, save. The old one is overwritten, never transmitted anywhere but the provider.</p>
+      <h3>Export</h3>
+      <p style="margin-bottom:12px"><button class="btn secondary" id="export-btn">Export versions as JSON</button></p>
+      <h3>Danger zone</h3>
+      <p><button class="btn danger-ghost" id="delete-data-btn">Delete all local data</button></p>
+      <p class="error" id="settings-error" role="alert"></p>
+      <p class="success" id="settings-success" role="status"></p>
+    </div>
+  </section>
+</main>
+
+<footer class="site no-print">
+  <p>RizzLab is a profile coaching tool — tasteful by design: no manipulation tactics, no negging, no fabricated lifestyle. Your API key and photos never leave this browser except in your own provider API calls.</p>
+  <p style="margin-top:8px"><a href="#/settings" data-nav="settings" style="color:var(--accent)">Settings</a> &middot; <a href="#/pricing" data-nav="pricing" style="color:var(--accent)">Pricing</a></p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
