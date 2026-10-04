@@ -54,11 +54,59 @@ function go(name, arg) {
   location.hash = '#/' + name + (arg ? '/' + arg : '');
 }
 function route() {
-  const parts = (location.hash || '#/landing').replace('#/', '').split('/');
+  let h = (location.hash || '#/landing').replace('#/', '');
+  let query = '';
+  const qi = h.indexOf('?');
+  if (qi >= 0) { query = h.slice(qi + 1); h = h.slice(0, qi); }
+  const parts = h.split('/');
   const name = VIEWS.includes(parts[0]) ? parts[0] : 'landing';
   if (name === 'results' && parts[1]) { currentDealId = parts[1]; renderResults(currentDealId); }
   if (name === 'report' && parts[1]) { currentDealId = parts[1]; renderReport(currentDealId); }
   showView(name);
+  if (name === 'new' && query) applySharedParams(query);
+}
+
+/* Pre-fill the Buy & Hold form from a shared hash link, e.g.
+   #/new?price=200000&rent=2500&address=1403%20Avenue%20M&taxA=2600&insA=1800
+   &downPct=20&ratePct=7&termYears=30&loanType=conventional&units=2&zip=34950
+   or #/new?sharedUrl=<encoded listing URL> (address parsed via parseListingUrl).
+   Supported params: price, rent, address, taxA, insA, hoaM, downPct, ratePct,
+   termYears, loanType, units (appended to notes), zip (appended to address). */
+function applySharedParams(query) {
+  let p;
+  try { p = new URLSearchParams(query); } catch (err) { return; }
+  const setVal = (id, val) => {
+    if (val == null || val === '') return false;
+    const el = document.getElementById(id);
+    if (el) { el.value = val; return true; }
+    return false;
+  };
+  let filled = 0;
+  setStrategy('buy');
+  const lt = p.get('loanType');
+  if (lt && LOAN_TYPES[lt]) { setLoanType(lt, false); filled++; }
+  [['price', 'f-price'], ['rent', 'f-rent'], ['taxA', 'f-tax'], ['insA', 'f-ins'],
+   ['hoaM', 'f-hoa'], ['downPct', 'f-down'], ['ratePct', 'f-rate'], ['termYears', 'f-term']
+  ].forEach(([param, id]) => { if (setVal(id, p.get(param))) filled++; });
+  const addr = p.get('address'), zip = p.get('zip');
+  if (addr) {
+    const a = (zip && !addr.includes(zip)) ? addr + ' ' + zip : addr;
+    if (setVal('f-addr', a)) filled++;
+  } else if (zip && setVal('f-addr', zip)) filled++;
+  const sharedUrl = p.get('sharedUrl');
+  if (sharedUrl) {
+    const parsed = parseListingUrl(sharedUrl);
+    if (parsed && setVal('f-addr', parsed.address)) filled++;
+  }
+  const units = p.get('units');
+  if (units) {
+    const n = document.getElementById('f-notes');
+    if (n) { n.value = (n.value ? n.value + ' ' : '') + 'Units: ' + units; filled++; }
+  }
+  if (filled > 0) {
+    const notice = document.getElementById('shared-notice');
+    if (notice) { notice.hidden = false; notice.textContent = 'Fields filled from shared link — review and hit Analyze.'; }
+  }
 }
 if (typeof window !== 'undefined') {
   window.addEventListener('hashchange', route);
@@ -304,6 +352,142 @@ function streetViewEmbed(addr) {
   const q = encodeURIComponent((addr || '').trim());
   return q ? 'https://maps.google.com/maps?q=' + q + '&z=17&output=embed' : '';
 }
+
+/* ================= Listing URL intake (agentic) ================= */
+/* Pure function — no network calls (listing sites block CORS, so the address
+   is parsed from the URL slug and the full numbers come via Ziggy in chat). */
+const STREET_TYPES = ['st','street','ave','avenue','blvd','boulevard','dr','drive','ct','court',
+  'ln','lane','rd','road','way','ter','terrace','pl','place','pkwy','parkway','cir','circle','trl','trail'];
+
+function titleCase(s) {
+  return String(s || '').split(/[\s_\-]+/).filter(Boolean).map(w =>
+    w.length === 1 ? w.toUpperCase() : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()
+  ).join(' ');
+}
+
+/* Split slug tokens (state/zip already peeled) into street + city.
+   The street ends at the last street-type word, plus one trailing token when
+   it's a single letter ("Avenue M", "Street B"). */
+function splitStreetCity(tokens) {
+  const lower = tokens.map(t => t.toLowerCase());
+  let cut = -1;
+  for (let i = 0; i < lower.length; i++) if (STREET_TYPES.includes(lower[i])) cut = i;
+  if (cut < 0) return { street: null, city: null };
+  let end = cut + 1;
+  if (end < tokens.length && tokens[end].length === 1) end++;
+  const street = tokens.slice(0, end).join(' ');
+  const city = tokens.slice(end).join(' ');
+  return { street: street || null, city: city || null };
+}
+
+function peelStateZip(tokens) {
+  const t = tokens.slice();
+  let zip = null, state = null;
+  if (t.length && /^\d{5}(-\d{4})?$/.test(t[t.length - 1])) zip = t.pop().slice(0, 5);
+  if (t.length && /^[a-zA-Z]{2}$/.test(t[t.length - 1])) state = t.pop().toUpperCase();
+  return { tokens: t, zip, state };
+}
+
+function parseListingUrl(raw) {
+  let u;
+  try { u = new URL(String(raw || '').trim()); }
+  catch (err) { return null; }
+  const host = u.hostname.replace(/^www\./, '').toLowerCase();
+  const path = u.pathname;
+  let source = null, street = null, city = null, state = null, zip = null;
+
+  const fromSlug = slug => {
+    const p = peelStateZip(slug.split('-'));
+    const sc = splitStreetCity(p.tokens);
+    return { street: sc.street, city: sc.city, state: p.state, zip: p.zip };
+  };
+
+  if (host.includes('zillow.com')) {
+    // /homedetails/1403-Avenue-M-Fort-Pierce-FL-34950/1234567_zpid/
+    const m = path.match(/\/homedetails\/([^\/]+)/);
+    if (!m) return null;
+    source = 'Zillow';
+    ({ street, city, state, zip } = fromSlug(m[1]));
+  } else if (host.includes('redfin.com')) {
+    // /FL/Fort-Pierce/1403-Avenue-M-34950/home/141339060
+    const segs = path.split('/').filter(Boolean);
+    if (segs.length < 3) return null;
+    source = 'Redfin';
+    state = /^[a-zA-Z]{2}$/.test(segs[0]) ? segs[0].toUpperCase() : null;
+    city = titleCase(segs[1]);
+    const r = fromSlug(segs[2]);
+    street = r.street; if (r.zip) zip = r.zip;
+  } else if (host.includes('realtor.com')) {
+    // /realestateandhomes-detail/1403-Avenue-M_Fort-Pierce_FL_34950_M12345-67890
+    const m = path.match(/\/realestateandhomes-detail\/([^\/_]+)_([^\/_]+)_([^\/_]+)_([^\/]+)/);
+    if (!m) return null;
+    source = 'Realtor.com';
+    street = titleCase(m[1]); city = titleCase(m[2]);
+    state = m[3].toUpperCase(); zip = /^\d{5}/.test(m[4]) ? m[4].slice(0, 5) : null;
+  } else if (host.includes('homes.com')) {
+    // /property/1403-avenue-m-fort-pierce-fl/3f1w047vlyb9p/
+    const m = path.match(/\/property\/([^\/]+)/);
+    if (!m) return null;
+    source = 'Homes.com';
+    ({ street, city, state, zip } = fromSlug(m[1]));
+  } else if (host.includes('compass.com')) {
+    // /homedetails/1403-Avenue-M-Fort-Pierce-FL-34950/1C95ZW_pid/
+    const m = path.match(/\/homedetails\/([^\/]+)/);
+    if (!m) return null;
+    source = 'Compass';
+    ({ street, city, state, zip } = fromSlug(m[1]));
+  } else if (host.includes('loopnet.com') || host.includes('crexi.com')) {
+    // Best effort: address slugs vary — LoopNet is usually street-first
+    // ("1403-Avenue-M-Fort-Pierce-FL"), Crexi is city-first ("fl-fort-pierce-1403-avenue-m").
+    source = host.includes('loopnet.com') ? 'LoopNet' : 'Crexi';
+    const segs = path.split('/').filter(Boolean);
+    const trySeg = s => {
+      const toks0 = s.split('-');
+      let toks = toks0.slice(), leadState = null;
+      if (toks.length >= 3 && /^[a-zA-Z]{2}$/.test(toks[0])) leadState = toks.shift().toUpperCase();
+      const p = peelStateZip(toks);
+      const stateFromTail = !!p.state;
+      if (!p.state && leadState) p.state = leadState;
+      p.cityFirst = !!leadState && !stateFromTail;
+      return p;
+    };
+    let found = null;
+    for (const s of segs) {
+      const p = trySeg(s);
+      if (p.zip && p.state && p.tokens.length >= 2) { found = p; break; }
+    }
+    if (!found) {
+      for (const s of segs) {
+        const p = trySeg(s);
+        const low = p.tokens.map(t => t.toLowerCase());
+        if (p.state && p.tokens.length >= 2 && low.some(t => STREET_TYPES.includes(t))) { found = p; break; }
+      }
+    }
+    if (!found) return null;
+    if (found.cityFirst) {
+      // city-first: the street starts at the first numeric (house number) token
+      const idx = found.tokens.findIndex(t => /^\d+$/.test(t));
+      if (idx < 0) return null;
+      city = found.tokens.slice(0, idx).join(' ');
+      street = found.tokens.slice(idx).join(' ');
+    } else {
+      const sc = splitStreetCity(found.tokens);
+      street = sc.street; city = sc.city;
+    }
+    state = found.state; zip = found.zip;
+  } else {
+    return null;
+  }
+
+  if (!street) return null;
+  street = titleCase(street);
+  city = city ? titleCase(city) : null;
+  let address = street;
+  if (city) address += ', ' + city;
+  if (state) address += ', ' + state;
+  if (zip) address += ' ' + zip;
+  return { source, street, city, state, zip, address };
+}
 /* Years since last sale + price change since last sale, from manual intel fields. */
 function intelStats(price, lastSalePrice, lastSaleDate, nowMs) {
   const out = { yearsSinceSale: null, priceChangePct: null };
@@ -429,7 +613,40 @@ function runSelfTests() {
   const chk = calc(Object.assign({}, { price: 200000, taxA: 2400, insA: 1200, hoaM: 0, downPct: 20, ratePct: 7, termYears: 30, closingPct: 2, vacPct: 5, maintPct: 5, capexPct: 5, mgmtPct: 8 }, { rent: t12.rentForDscr125 }));
   approx(chk.dscr, 1.25, 0.005, 't12 DSCR target');
 
-  console.log('All calculator self-tests passed (12 tests).');
+  // T13: parseListingUrl — 6 listing sites + garbage
+  const t13cases = [
+    ['https://www.zillow.com/homedetails/1403-Avenue-M-Fort-Pierce-FL-34950/1234567_zpid/', 'Zillow', '1403 Avenue M', 'Fort Pierce', 'FL', '34950'],
+    ['https://www.redfin.com/FL/Fort-Pierce/1403-Avenue-M-34950/home/141339060', 'Redfin', '1403 Avenue M', 'Fort Pierce', 'FL', '34950'],
+    ['https://www.realtor.com/realestateandhomes-detail/1403-Avenue-M_Fort-Pierce_FL_34950_M12345-67890', 'Realtor.com', '1403 Avenue M', 'Fort Pierce', 'FL', '34950'],
+    ['https://www.homes.com/property/1403-avenue-m-fort-pierce-fl/3f1w047vlyb9p/', 'Homes.com', '1403 Avenue M', 'Fort Pierce', 'FL', null],
+    ['https://www.compass.com/homedetails/1403-Avenue-M-Fort-Pierce-FL-34950/1C95ZW_pid/', 'Compass', '1403 Avenue M', 'Fort Pierce', 'FL', '34950'],
+    ['https://www.loopnet.com/Listing/1403-Avenue-M-Fort-Pierce-FL/27553604/', 'LoopNet', '1403 Avenue M', 'Fort Pierce', 'FL', null],
+    ['https://www.crexi.com/properties/98765/fl-fort-pierce-1403-avenue-m-34950', 'Crexi', '1403 Avenue M', 'Fort Pierce', 'FL', '34950'],
+  ];
+  t13cases.forEach(([u, src, street, city, state, zip], i) => {
+    const r = parseListingUrl(u);
+    assert(r, 't13.' + i + ' parsed ' + u);
+    assert(r.source === src, 't13.' + i + ' source: got ' + r.source);
+    assert(r.street === street, 't13.' + i + ' street: got ' + r.street);
+    assert(r.city === city, 't13.' + i + ' city: got ' + r.city);
+    assert(r.state === state, 't13.' + i + ' state: got ' + r.state);
+    assert(r.zip === zip, 't13.' + i + ' zip: got ' + r.zip);
+  });
+  assert(parseListingUrl('https://example.com/not-a-listing') === null, 't13 garbage null');
+  assert(parseListingUrl('not a url') === null, 't13 invalid null');
+  assert(parseListingUrl('') === null, 't13 empty null');
+
+  // T14: suggested-offer bisection
+  const d14a = { price: 200000, rent: 2500, taxA: 2600, insA: 1800, hoaM: 0, downPct: 20, ratePct: 7, termYears: 30, closingPct: 2, vacPct: 8, maintPct: 5, capexPct: 5, mgmtPct: 8, loanType: 'conventional' };
+  const o14a = suggestOffer(d14a, 200);
+  assert(o14a && o14a.atAsking && o14a.offer >= 200000, 't14a asking already beats target');
+  const d14b = { price: 475000, rent: 4800, taxA: 6939, insA: 2800, hoaM: 0, downPct: 3.5, ratePct: 7, termYears: 30, closingPct: 2, vacPct: 8, maintPct: 5, capexPct: 5, mgmtPct: 8, loanType: 'conventional' };
+  assert(calc(d14b).cfM < 200, 't14b asking misses target (sanity)');
+  const o14b = suggestOffer(d14b, 200);
+  assert(o14b && !o14b.atAsking && o14b.offer < 475000, 't14b offer below asking, got ' + (o14b && o14b.offer));
+  approx(o14b.metrics.cfM, 200, 5, 't14b cash flow within $5 of target');
+
+  console.log('All calculator self-tests passed (14 tests).');
 }
 
 /* ================= LLM (BYOK) ================= */
@@ -697,6 +914,52 @@ function scoreDialHtml(s) {
     </svg><div class="num"><b>${s.score}</b><span>deal score</span></div></div>`;
 }
 
+/* ---------- Suggested offer (buy & hold) ---------- */
+/* Solve for the highest purchase price with monthly cash flow >= target.
+   Cash flow falls monotonically as price rises (P&I scales with the loan),
+   so bisection converges. Reuses calc() — no duplicated math. */
+function suggestOffer(deal, target) {
+  const t = isFinite(+target) ? +target : 200;
+  const asking = +deal.price;
+  if (!(asking > 0)) return null;
+  const mAsk = calc(deal);
+  if (mAsk.cfM >= t) return { offer: asking, atAsking: true, metrics: mAsk, target: t, asking };
+  const mMin = calc(Object.assign({}, deal, { price: 1 }));
+  if (mMin.cfM < t) return null; // rent can't cover fixed opex even free — no card
+  let lo = 1, hi = asking;
+  for (let i = 0; i < 40; i++) {
+    const mid = (lo + hi) / 2;
+    if (calc(Object.assign({}, deal, { price: mid })).cfM >= t) lo = mid; else hi = mid;
+  }
+  return { offer: lo, atAsking: false, metrics: calc(Object.assign({}, deal, { price: lo })), target: t, asking };
+}
+
+function suggestedOfferHtml(deal) {
+  let target = 200;
+  try {
+    const w = JSON.parse(localStorage.getItem('deallens_watch') || 'null');
+    if (w && isFinite(+w.minCashFlow)) target = +w.minCashFlow;
+  } catch (err) { /* no watch saved — default target */ }
+  const o = suggestOffer(deal, target);
+  if (!o) return '';
+  if (o.atAsking) {
+    const m = o.metrics;
+    return `<div class="card"><h3>Suggested offer</h3>
+      <p>Asking price already beats your ${fmt$(target)}/mo target — no discount needed.</p>
+      <p class="tip">At ${fmt$(o.offer)}: cash flow ${fmt$(m.cfM)}/mo, DSCR ${m.dscr === 99 ? 'n/a' : m.dscr.toFixed(2)}.</p></div>`;
+  }
+  const mo = o.metrics;
+  const pctBelow = (1 - o.offer / o.asking) * 100;
+  return `<div class="card"><h3>Suggested offer</h3>
+    <div class="grid-metrics">
+      <div class="metric"><div class="v good">${fmt$(o.offer)}</div><div class="l">Offer to hit ${fmt$(target)}/mo (${pctBelow.toFixed(1)}% below asking)</div></div>
+      <div class="metric"><div class="v">${fmt$(mo.cfM)}<span style="font-size:.8rem;color:var(--muted-fg)">/mo</span></div><div class="l">Cash flow at offer</div></div>
+      <div class="metric"><div class="v">${fmtPct1(mo.capRate)}</div><div class="l">Cap rate at offer</div></div>
+      <div class="metric"><div class="v">${mo.dscr === 99 ? 'n/a' : mo.dscr.toFixed(2)}</div><div class="l">DSCR at offer</div></div>
+    </div>
+    <p class="tip">Cash in at offer: ${fmt$(mo.cashIn)}. Walk-away: anything above ${fmt$(o.offer)} misses your cash-flow target.</p></div>`;
+}
+
 /* ---------- Buy & hold results ---------- */
 function renderBuyResults(deal, m, s, flags) {
   return `
@@ -737,6 +1000,7 @@ function renderBuyResults(deal, m, s, flags) {
       <tr class="total"><td>Cash flow</td><td class="${m.cfM >= 0 ? 'pos' : 'neg'}">${fmt$(m.cfM)}</td></tr>
     </table></div>
 
+    ${suggestedOfferHtml(deal)}
     ${flagsHtml(flags)}
     ${llmCardHtml(deal)}
 
@@ -760,7 +1024,7 @@ function renderFlipResults(deal, m, s, flags) {
       <div class="metric"><div class="v ${m.profit >= 0 ? 'good' : 'bad'}">${fmt$(m.profit)}</div><div class="l">Projected profit</div></div>
       <div class="metric"><div class="v ${valClass(m.roi, 0.2, 0)}">${fmtPct1(m.roi)}</div><div class="l">ROI on cash</div></div>
       <div class="metric"><div class="v ${valClass(m.annRoi, 0.2, 0)}">${fmtPct1(m.annRoi)}</div><div class="l">Annualized ROI (${m.holdMonths} mo)</div></div>
-      <div class="metric"><div class="v">${fmt$(m.mao)}</div><div class="l">Max offer — 70% rule</div></div>
+      <div class="metric"><div class="v">${fmt$(m.mao)}</div><div class="l">Suggested max offer (70% rule)</div></div>
       <div class="metric"><div class="v">${m.breakEvenSale != null ? fmt$(m.breakEvenSale) : 'n/a'}</div><div class="l">Break-even sale price</div></div>
       <div class="metric"><div class="v">${fmt$(m.cashIn)}</div><div class="l">Total cash invested</div></div>
     </div>
@@ -1104,6 +1368,58 @@ function resetAnalysis() {
   go('new');
 }
 
+/* ================= Listing link intake =================
+   Paste a listing URL → address is parsed from the slug (no network calls;
+   listing sites block CORS) → address field fills and intel deep-links render.
+   "Ask Ziggy" copies a chat message; Ziggy replies with a pre-filled link. */
+let lastListingUrl = '';
+
+function wireListingIntake() {
+  const btn = document.getElementById('listingurl-pull');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const inp = document.getElementById('f-listingurl');
+    const msg = document.getElementById('listingurl-msg');
+    const linksBox = document.getElementById('link-intel-links');
+    const ziggyRow = document.getElementById('link-ziggy-row');
+    const url = (inp.value || '').trim();
+    const parsed = parseListingUrl(url);
+    if (!parsed) {
+      if (msg) msg.textContent = "Couldn't read that link — paste the address manually or try another listing site.";
+      if (linksBox) linksBox.innerHTML = '';
+      if (ziggyRow) ziggyRow.hidden = true;
+      lastListingUrl = '';
+      return;
+    }
+    lastListingUrl = url;
+    const addrEl = document.getElementById('f-addr');
+    if (addrEl) addrEl.value = parsed.address;
+    const hint = document.getElementById('intel-links-hint');
+    if (hint) hint.textContent = 'Links unlocked for ' + parsed.address + ' — they open in new tabs.';
+    if (linksBox) {
+      const links = intelLinks(parsed.address);
+      const sv = streetViewEmbed(parsed.address);
+      linksBox.innerHTML = '<div class="intel-links">' + links.map(l =>
+        '<a class="intel-link" href="' + esc(l.url) + '" target="_blank" rel="noopener">' + esc(l.label) + '</a>').join('') + '</div>' +
+        (sv ? '<div class="map-wrap"><iframe title="Map of ' + esc(parsed.address) + '" src="' + esc(sv) + '" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>' : '');
+    }
+    if (msg) msg.textContent = 'Address pulled from ' + parsed.source + '. Add price + rent, or tap below and Ziggy will pull the full listing.';
+    if (ziggyRow) ziggyRow.hidden = false;
+  });
+  const zb = document.getElementById('listingurl-ziggy');
+  if (zb) zb.addEventListener('click', () => {
+    if (!lastListingUrl) return;
+    const text = 'Pull this listing into DealLens: ' + lastListingUrl;
+    const done = () => {
+      const h = document.getElementById('listingurl-ziggy-hint');
+      if (h) h.textContent = "Copied — paste that to Ziggy in chat. He'll reply with a link that opens DealLens fully filled in.";
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+    } else fallbackCopy(text, done);
+  });
+}
+
 /* ================= Deal Watch =================
    The hunt itself runs via the assistant's cron — this tab is where the user
    sets criteria + interval, then sends the copied settings to Ziggy in chat. */
@@ -1333,7 +1649,7 @@ function wireWatch() {
 
 /* Node-testable exports for the watch helpers (browser bundle unaffected). */
 if (typeof module !== 'undefined' && module.exports) {
-  Object.assign(module.exports, { watchCopyText, fmtMoney, WATCH_INTERVALS, WATCH_PROPTYPES, WATCH_STRATS, LS_WATCH, WATCH_RESULTS_URL });
+  Object.assign(module.exports, { watchCopyText, fmtMoney, WATCH_INTERVALS, WATCH_PROPTYPES, WATCH_STRATS, LS_WATCH, WATCH_RESULTS_URL, parseListingUrl, suggestOffer, titleCase });
 }
 
 function init() {
@@ -1463,6 +1779,7 @@ function init() {
   setLoanType('conventional', false);
   renderPhotoGallery();
   wireWatch();
+  wireListingIntake();
   route();
 }
 
