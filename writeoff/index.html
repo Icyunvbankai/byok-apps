@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WriteOff — Find every deduction you're already owed</title>
+<meta name="description" content="BYOK 1099 deduction finder. Your API key, your compute — guided Q&A, Schedule C mapping, and estimated tax savings. Not tax advice.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header no-print">
+  <div class="header-inner">
+    <a class="logo" href="#/" data-nav="landing">Write<span>Off</span></a>
+    <nav class="nav" aria-label="Main">
+      <button data-nav="qa">+ Find deductions</button>
+      <button data-nav="import">Import</button>
+      <button data-nav="ledger">Ledger</button>
+      <button data-nav="history">History</button>
+      <button data-nav="setup">API Key</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ============ LANDING ============ -->
+  <section class="view" id="view-landing" aria-label="Welcome">
+    <div class="hero">
+      <span class="kicker">BYOK &middot; your key, your compute</span>
+      <h1>Freelancers overpay taxes. You don't have to.</h1>
+      <p class="lead">Answer a few questions, paste your expenses, and get a deduction report organized by Schedule C category — with estimated savings in dollars. You bring your own AI key, so it costs you pennies.</p>
+      <div class="notice warn" style="max-width:640px;margin:16px auto;text-align:left"><strong>Not tax advice.</strong> WriteOff is an educational planning tool only. Tax law is complex and changes often — always consult a licensed CPA or tax advisor before filing or claiming deductions.</div>
+      <p style="margin-top:8px">
+        <button class="btn" data-nav="qa">Find my deductions</button>
+        <button class="btn secondary" data-nav="setup" style="margin-left:8px">Set up API key</button>
+      </p>
+    </div>
+
+    <div class="steps">
+      <div class="step"><span class="n">1</span><h3>Answer the Q&amp;A</h3><p>Branching questions by work type — gear, home office, mileage, software, contractors. Nobody answers 100 questions.</p></div>
+      <div class="step"><span class="n">2</span><h3>We do the math</h3><p>Every deduction mapped to its Schedule C category in code — mileage at the IRS rate, 50% meals, home-office simplified. The AI never does your arithmetic.</p></div>
+      <div class="step"><span class="n">3</span><h3>Keep the savings</h3><p>Deduction report with estimated tax savings, missed-deduction suggestions, and a receipt checklist for tax time.</p></div>
+    </div>
+
+    <div class="sample-strip" aria-label="Sample output">
+      <div class="stat"><div class="v">$2,340</div><div class="l">deductions found (sample)</div></div>
+      <div class="stat"><div class="v">$515</div><div class="l">est. tax savings at 22%</div></div>
+      <div class="stat"><div class="v">14</div><div class="l">Schedule C categories</div></div>
+      <div class="stat"><div class="v">10 min</div><div class="l">guided Q&amp;A</div></div>
+    </div>
+
+    <div class="card">
+      <h3>How BYOK pricing works</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem">WriteOff runs on <strong style="color:var(--fg)">your</strong> OpenAI, xAI, or Anthropic key — pasted once, stored only in this browser, never on our servers. A full Q&amp;A run costs roughly <strong style="color:var(--fg)">$0.01–0.03</strong> of your own API credit. We charge for the deduction engine, not the tokens.</p>
+      <p style="margin-top:12px"><button class="btn secondary" data-nav="pricing">See plans</button></p>
+    </div>
+
+    <div class="card">
+      <h3>FAQ</h3>
+      <p style="font-size:.92rem;margin-bottom:10px"><strong style="color:var(--fg)">Do I need an API key?</strong><br><span style="color:var(--muted-fg)">Yes — the AI features (expense categorization, missed-deduction suggestions) run on your key. The Q&amp;A, ledger, and savings math work without one.</span></p>
+      <p style="font-size:.92rem;margin-bottom:10px"><strong style="color:var(--fg)">Is this tax advice?</strong><br><span style="color:var(--muted-fg)">No. WriteOff organizes your expenses and estimates savings. A CPA makes the final call on what you claim.</span></p>
+      <p style="font-size:.92rem;margin-bottom:10px"><strong style="color:var(--fg)">What about quarterly estimated taxes?</strong><br><span style="color:var(--muted-fg)">Coming in v2 — the ledger you're building now feeds straight into it.</span></p>
+      <p style="font-size:.92rem"><strong style="color:var(--fg)">Where does my data go?</strong><br><span style="color:var(--muted-fg)">Nowhere. Everything lives in this browser's local storage. AI calls go directly from your browser to your chosen provider.</span></p>
+    </div>
+  </section>
+
+  <!-- ============ SETUP ============ -->
+  <section class="view" id="view-setup" aria-label="API key setup">
+    <h1>Bring your own key</h1>
+    <p class="lead" style="margin-bottom:20px">Pick a provider, paste a key. It stays in this browser's local storage — it is never sent to our servers. Every AI call goes straight from your browser to the provider.</p>
+
+    <div class="notice">New to API keys? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI keys</a> &middot; <a href="https://console.x.ai" target="_blank" rel="noopener">xAI console</a> &middot; <a href="https://console.anthropic.com" target="_blank" rel="noopener">Anthropic console</a>. Set a small spend limit (e.g. $5) on your provider account.</div>
+    <div class="notice warn" id="anthropic-note" hidden>Heads up: Anthropic's API sometimes blocks direct browser calls (CORS). If the key test fails below, OpenAI or xAI will work fine — or run Anthropic through a tiny proxy.</div>
+
+    <div class="card">
+      <div class="provider-cards" role="radiogroup" aria-label="Provider">
+        <label class="provider" data-provider="openai">
+          <input type="radio" name="provider" value="openai" checked>
+          <strong>OpenAI</strong><small>gpt-4o-mini default &middot; ~$0.01–0.03/run</small>
+        </label>
+        <label class="provider" data-provider="xai">
+          <input type="radio" name="provider" value="xai">
+          <strong>xAI</strong><small>grok-3-mini default &middot; ~$0.01–0.03/run</small>
+        </label>
+        <label class="provider" data-provider="anthropic">
+          <input type="radio" name="provider" value="anthropic">
+          <strong>Anthropic</strong><small>haiku default &middot; ~$0.02–0.04/run</small>
+        </label>
+      </div>
+
+      <div class="field">
+        <label for="api-key">API key</label>
+        <input type="password" id="api-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+        <p class="tip">Stored only in this browser (localStorage). Clear it anytime below.</p>
+      </div>
+
+      <div class="field">
+        <label for="model">Model <span class="hint">(editable — use what you like)</span></label>
+        <input type="text" id="model" value="gpt-4o-mini" spellcheck="false">
+        <p class="tip" id="model-hint">Mini-class models are plenty for categorization and cost fractions of a cent per call.</p>
+      </div>
+
+      <p>
+        <button class="btn" id="test-key-btn">Test key</button>
+        <button class="btn secondary" id="save-key-btn" style="margin-left:8px">Save key</button>
+      </p>
+      <p class="error" id="key-error" role="alert"></p>
+      <p class="success" id="key-success" role="status"></p>
+
+      <p class="tip" style="margin-top:12px">Est. key spend this browser: <strong id="spend-counter" style="color:var(--fg)">$0.00</strong> (tracked locally, approximate).</p>
+      <p style="margin-top:16px"><button class="btn danger-ghost" id="clear-key-btn">Remove saved key</button></p>
+    </div>
+  </section>
+
+  <!-- ============ Q&A ============ -->
+  <section class="view" id="view-qa" aria-label="Guided deduction Q&A">
+    <div id="qa-worktype">
+      <h1>What kind of 1099 work do you do?</h1>
+      <p class="lead" style="margin-bottom:20px">This picks your question track. The creator track is fully guided; other tracks use the general expense flow for now.</p>
+      <div class="worktype-grid" role="radiogroup" aria-label="Work type">
+        <button class="worktype" data-worktype="creator"><strong>Creator</strong><small>YouTuber, streamer, photographer, UGC, designer</small></button>
+        <button class="worktype" data-worktype="freelancer"><strong>Freelancer</strong><small>Writer, dev, marketer, virtual assistant</small></button>
+        <button class="worktype" data-worktype="gig"><strong>Gig driver</strong><small>Rideshare, delivery, courier</small></button>
+        <button class="worktype" data-worktype="consultant"><strong>Consultant</strong><small>Coach, advisor, agency owner</small></button>
+      </div>
+      <div class="notice warn" id="qa-track-note" hidden style="margin-top:16px">The tailored <strong id="qa-track-name"></strong> track ships in v2. You'll get the general expense flow below — plus AI suggestions tuned to your work type on the report.</div>
+    </div>
+
+    <div id="qa-flow" hidden>
+      <div class="qa-progress" role="progressbar" aria-label="Q&A progress"><div class="qa-progress-bar" id="qa-progress-bar"></div></div>
+      <p class="tip" id="qa-progress-label" style="margin-bottom:12px"></p>
+      <div class="card" id="qa-card" aria-live="polite"></div>
+      <p class="no-print" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn secondary" id="qa-back-btn">Back</button>
+        <button class="btn danger-ghost" id="qa-quit-btn">Quit Q&amp;A</button>
+      </p>
+    </div>
+  </section>
+
+  <!-- ============ IMPORT ============ -->
+  <section class="view" id="view-import" aria-label="Import expenses">
+    <h1>Import expenses</h1>
+    <p class="lead" style="margin-bottom:20px">Paste a list, a bank-statement excerpt, or a messy note — the AI sorts each line into its Schedule C category with a confidence score and a one-line why. Amounts are taken as you wrote them; the AI never does math.</p>
+    <div class="notice warn" id="import-no-key" hidden>You haven't saved an API key yet — categorization needs one. <a href="#/setup" data-nav="setup">Set it up</a> (30 seconds).</div>
+    <div class="card">
+      <div class="field">
+        <label for="import-text">Paste expenses</label>
+        <textarea id="import-text" rows="7" placeholder="Sony A7IV — $2,199 (Mar 12)&#10;Adobe Creative Cloud $59.99/mo&#10;Uber to client shoot — 34 miles&#10;Blue Bottle coffee w/ client — $18"></textarea>
+        <p class="tip">One item per line works best. Include amounts, dates, and miles where you have them.</p>
+      </div>
+      <p><button class="btn" id="import-btn">Categorize with AI</button></p>
+      <p class="error" id="import-error" role="alert"></p>
+      <div id="import-results" style="margin-top:16px"></div>
+    </div>
+  </section>
+
+  <!-- ============ LEDGER ============ -->
+  <section class="view" id="view-ledger" aria-label="Expense ledger">
+    <h1>Expense ledger</h1>
+    <p class="lead" style="margin-bottom:16px">Everything captured this year. Edit or delete anything — the report recomputes instantly.</p>
+    <div class="sample-strip" style="margin:0 0 16px">
+      <div class="stat"><div class="v" id="ledger-count">0</div><div class="l">expenses</div></div>
+      <div class="stat"><div class="v" id="ledger-total">$0</div><div class="l">deductible total</div></div>
+    </div>
+    <div id="ledger-list"></div>
+    <details class="assume">
+      <summary>Add an expense manually</summary>
+      <div class="body">
+        <div class="grid2">
+          <div class="field"><label for="m-desc">Description</label><input id="m-desc" placeholder="Camera lens"></div>
+          <div class="field"><label for="m-amount">Amount ($)</label><input id="m-amount" type="number" min="0" step="0.01" placeholder="499"></div>
+          <div class="field"><label for="m-date">Date</label><input id="m-date" type="date"></div>
+          <div class="field"><label for="m-category">Schedule C category</label><select id="m-category"></select></div>
+        </div>
+        <p><button class="btn secondary" id="m-add-btn">Add expense</button></p>
+        <p class="error" id="m-error" role="alert"></p>
+      </div>
+    </details>
+    <p class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <button class="btn" data-nav="results" id="ledger-report-btn">See my report</button>
+      <button class="btn secondary" data-nav="import">Import more</button>
+      <button class="btn danger-ghost" id="ledger-clear-btn">Clear ledger</button>
+    </p>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section class="view" id="view-results" aria-label="Deduction report">
+    <div id="results-content"></div>
+    <div class="card no-print">
+      <div class="grid2">
+        <div class="field" style="margin-bottom:0">
+          <label for="rate-input">Your marginal tax rate (%)</label>
+          <input id="rate-input" type="number" min="0" max="60" step="1" value="22">
+          <p class="tip">Federal bracket + state. Savings = deductions &times; this rate.</p>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label for="year-label">Tax year rules</label>
+          <input id="year-label" type="text" value="2025" disabled aria-label="Tax year (fixed in MVP)">
+          <p class="tip">Mileage $0.70/mi &middot; home office $5/sq ft (max 300) &middot; meals 50%.</p>
+        </div>
+      </div>
+    </div>
+    <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="print-btn">Export PDF (print)</button>
+      <button class="btn secondary" id="save-session-btn">Save this session</button>
+      <button class="btn secondary" data-nav="ledger">Back to ledger</button>
+    </p>
+    <div class="notice warn"><strong>Not tax advice.</strong> WriteOff is an educational planning tool only. Always consult a licensed CPA or tax advisor before filing or claiming deductions.</div>
+    <div class="print-only" id="print-disclaimer">
+      <p><strong>Disclaimer — not tax advice.</strong> This report was generated by WriteOff, an educational planning tool. Tax law is complex and changes often. Verify every figure with a licensed CPA or tax advisor before filing. Generated <span id="print-date"></span>.</p>
+    </div>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section class="view" id="view-history" aria-label="History">
+    <h1>Saved sessions</h1>
+    <p class="lead" style="margin-bottom:16px">Every report you save lives here. Re-open one anytime — tax season is just "export."</p>
+    <div id="history-list"></div>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section class="view" id="view-pricing" aria-label="Pricing">
+    <h1>Pricing</h1>
+    <p class="lead" style="margin-bottom:20px">One surfaced deduction pays for years. AI compute runs on your own key — pennies per run.</p>
+    <div class="steps">
+      <div class="step"><h3>Monthly</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$12<span style="font-size:.9rem;color:var(--muted-fg)">/mo</span></p><p>Unlimited Q&amp;A runs, ledger, reports, history.</p></div>
+      <div class="step"><h3>Annual</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$99<span style="font-size:.9rem;color:var(--muted-fg)">/yr</span></p><p>Everything monthly, 31% off. Buy once, file with confidence.</p></div>
+      <div class="step"><h3>7-day trial</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">Free</p><p>Full access. Your API key covers the pennies of compute.</p></div>
+    </div>
+    <div class="notice">Billing isn't wired in this MVP build — checkout arrives with launch. The app is fully usable now with your own key.</div>
+  </section>
+</main>
+
+<footer class="site no-print">
+  <p>WriteOff is an educational planning tool — <strong>not tax advice</strong>. Estimates only. Verify every number with a licensed CPA or tax advisor before filing. Your API key never leaves this browser.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
