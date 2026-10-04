@@ -404,3 +404,13 @@ footer.site a { color: var(--accent); }
   letter-spacing: 0.04em;
   vertical-align: middle;
 }
+
+/* DealLens agent loop (smart intake card) */
+.agent-block { margin: 14px 0; }
+.agent-label { display: block; font-size: 0.8rem; font-weight: 700; color: var(--muted-fg); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+.agent-addr { margin: 0 0 4px; font-size: 1.05rem; }
+.agent-note { margin: 0 0 4px; color: var(--muted-fg); font-size: 0.9rem; }
+.agent-intel-links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.pills-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.pills-row .radio-pill { flex: 1 1 auto; text-align: center; }
+#agent-flow .btn.block { width: 100%; margin-top: 12px; }
