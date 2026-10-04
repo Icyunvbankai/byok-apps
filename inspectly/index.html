@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inspectly — Read your inspection report like a contractor</title>
+<meta name="description" content="BYOK home-inspection report translator. Your API key, your compute — plain-English triage, repair priorities, and negotiation leverage.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header no-print">
+  <div class="header-inner">
+    <a class="logo" href="#/" data-nav="landing">Inspect<span>ly</span></a>
+    <nav class="nav" aria-label="Main">
+      <button data-nav="new">+ Triage</button>
+      <button data-nav="history">History</button>
+      <button data-nav="setup">API Key</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ============ LANDING ============ -->
+  <section class="view" id="view-landing" aria-label="Welcome">
+    <div class="hero">
+      <span class="kicker">BYOK &middot; your key, your compute</span>
+      <h1>Read your inspection report like a contractor, negotiate like an investor.</h1>
+      <p class="lead">Paste a 30-page inspection report. Get every finding triaged into <strong>what actually matters</strong>, <strong>what to negotiate</strong>, and <strong>what's normal</strong> — with plain-English explanations and dollar-range estimates. In about two minutes.</p>
+      <p style="margin-top:8px">
+        <button class="btn" data-nav="new">Triage my report</button>
+        <button class="btn secondary" data-nav="setup" style="margin-left:8px">Set up API key</button>
+      </p>
+      <p class="urgency">Your due-diligence clock is ticking — most contracts give you 7&ndash;15 days.</p>
+      <p class="honesty-badge">Ranges, not quotes &mdash; we say so upfront, on every page.</p>
+    </div>
+
+    <h2 style="text-align:center">A sample triage</h2>
+    <div class="steps">
+      <div class="step bucket-matters"><span class="bucket-tag matters">What matters</span><h3>Double-tapped breaker</h3><p>Two circuits share one breaker not rated for it &mdash; a fire risk. <strong>Next:</strong> licensed electrician separates them.</p><p class="sev-line">Severity 4/5 &middot; urgent</p></div>
+      <div class="step bucket-negotiate"><span class="bucket-tag negotiate">Negotiate</span><h3>Water heater, 2009</h3><p>Past its typical 10&ndash;12 year life. Still working, but budget for it. <strong>Ask:</strong> $1,200&ndash;$2,500 seller credit.</p><p class="sev-line">Severity 3/5 &middot; soon</p></div>
+      <div class="step bucket-normal"><span class="bucket-tag normal">Normal</span><h3>Caulk gaps, guest bath</h3><p>Every house has this. Caulk and monitor &mdash; don't let it near your negotiation.</p><p class="sev-line">Severity 1/5 &middot; fine</p></div>
+    </div>
+
+    <div class="sample-strip" aria-label="Sample output">
+      <div class="stat"><div class="v">3</div><div class="l">triage buckets</div></div>
+      <div class="stat"><div class="v">$0.01&ndash;0.04</div><div class="l">per report, on your key</div></div>
+      <div class="stat"><div class="v">~2 min</div><div class="l">report to action plan</div></div>
+      <div class="stat"><div class="v">$2k+</div><div class="l">typical negotiate find</div></div>
+    </div>
+
+    <div class="card">
+      <h3>How BYOK pricing works</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem">Inspectly runs on <strong style="color:var(--fg)">your</strong> OpenAI, xAI, or Anthropic key &mdash; pasted once, stored only in this browser, never on our servers. A full triage costs roughly <strong style="color:var(--fg)">$0.01&ndash;0.04</strong> of your own API credit. We charge for the triage engine, not the tokens.</p>
+      <p style="margin-top:12px"><button class="btn secondary" data-nav="pricing">See plans</button></p>
+    </div>
+  </section>
+
+  <!-- ============ SETUP ============ -->
+  <section class="view" id="view-setup" aria-label="API key setup">
+    <h1>Bring your own key</h1>
+    <p class="lead" style="margin-bottom:20px">Pick a provider, paste a key. It stays in this browser's local storage &mdash; it is never sent to our servers. Every AI call goes straight from your browser to the provider.</p>
+
+    <div class="notice">New to API keys? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI keys</a> &middot; <a href="https://console.x.ai" target="_blank" rel="noopener">xAI console</a> &middot; <a href="https://console.anthropic.com" target="_blank" rel="noopener">Anthropic console</a>. Set a small spend limit (e.g. $5&ndash;10/month) on your provider account while house-hunting.</div>
+    <div class="notice warn" id="anthropic-note" hidden>Heads up: Anthropic's API sometimes blocks direct browser calls (CORS). If the key test fails below, OpenAI or xAI will work fine.</div>
+
+    <div class="card">
+      <div class="provider-cards" role="radiogroup" aria-label="Provider">
+        <label class="provider" data-provider="openai">
+          <input type="radio" name="provider" value="openai" checked>
+          <strong>OpenAI</strong><small>gpt-4o-mini default &middot; ~$0.01&ndash;0.04/report</small>
+        </label>
+        <label class="provider" data-provider="xai">
+          <input type="radio" name="provider" value="xai">
+          <strong>xAI</strong><small>grok-4-fast default &middot; ~$0.01&ndash;0.04/report</small>
+        </label>
+        <label class="provider" data-provider="anthropic">
+          <input type="radio" name="provider" value="anthropic">
+          <strong>Anthropic</strong><small>claude-haiku-4-5 default &middot; ~$0.01&ndash;0.04/report</small>
+        </label>
+      </div>
+
+      <div class="field">
+        <label for="api-key">API key</label>
+        <input type="password" id="api-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+        <p class="tip">Stored only in this browser (localStorage). Clear it anytime below or in Settings.</p>
+      </div>
+
+      <div class="field">
+        <label for="model">Model <span class="hint">(editable &mdash; use what you like)</span></label>
+        <input type="text" id="model" value="gpt-4o-mini" spellcheck="false">
+        <p class="tip" id="model-hint">Mini-class models handle long reports cheaply and extract structure reliably.</p>
+      </div>
+
+      <p>
+        <button class="btn" id="test-key-btn">Test key</button>
+        <button class="btn secondary" id="save-key-btn" style="margin-left:8px">Save key</button>
+      </p>
+      <p class="error" id="key-error" role="alert"></p>
+      <p class="success" id="key-success" role="status"></p>
+
+      <p style="margin-top:16px"><button class="btn danger-ghost" id="clear-key-btn">Remove saved key</button></p>
+    </div>
+  </section>
+
+  <!-- ============ INTAKE ============ -->
+  <section class="view" id="view-new" aria-label="New triage">
+    <h1>Triage a report</h1>
+    <p class="lead" style="margin-bottom:20px">Paste the report text below. Nothing leaves your browser except the AI calls to your provider.</p>
+
+    <div class="notice warn" id="no-key-notice" hidden>You haven't saved an API key yet &mdash; triage needs one. <a href="#/setup" data-nav="setup">Set it up</a> (30 seconds).</div>
+
+    <div class="card">
+      <div class="grid2">
+        <div class="field"><label for="prop-name">Property nickname</label><input id="prop-name" placeholder="Maple St craftsman"></div>
+        <div class="field"><label for="prop-address">Address <span class="hint">(optional, stored only in this browser)</span></label><input id="prop-address" placeholder="123 Maple St, Tampa FL"></div>
+      </div>
+      <div class="field">
+        <label for="report-text">Inspection report text</label>
+        <textarea id="report-text" rows="10" placeholder="Paste the full inspection report here&hellip;"></textarea>
+        <p class="tip">Tip: most inspectors email a PDF &mdash; open it, select all, copy, paste. In-browser PDF extraction is coming.</p>
+      </div>
+      <div class="field">
+        <label for="file-input">Or load a .txt file</label>
+        <input type="file" id="file-input" accept=".txt,.md,text/plain">
+      </div>
+      <p>
+        <button class="btn secondary" id="demo-btn">Try the demo report</button>
+        <span class="tip" style="margin-left:8px">Built-in sample &mdash; runs on your key, won't save.</span>
+      </p>
+      <label class="checkline"><input type="checkbox" id="careful-toggle"> <span><strong>High-stakes triage</strong> <span class="hint">&mdash; use the flagship model (gpt-4o / grok-4 / claude-sonnet-4-5). Costs ~$0.15&ndash;0.60 per report instead of pennies.</span></span></label>
+      <p class="tip" id="cost-estimate" aria-live="polite"></p>
+      <p style="margin-top:12px"><button class="btn block" id="triage-btn">Triage my report</button></p>
+      <p class="error" id="intake-error" role="alert"></p>
+    </div>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section class="view" id="view-results" aria-label="Triage results">
+    <div class="limiter" role="note">Estimates are ranges based on national averages, not quotes. Get a licensed inspector or contractor for final numbers before negotiating.</div>
+    <div id="results-content"></div>
+    <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="sheet-btn">Negotiation sheet</button>
+      <button class="btn secondary" data-nav="new">New triage</button>
+      <button class="btn secondary" data-nav="history">History</button>
+    </p>
+    <div class="limiter" role="note">Estimates are ranges based on national averages, not quotes. Get a licensed inspector or contractor for final numbers before negotiating.</div>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section class="view" id="view-history" aria-label="History">
+    <h1>Saved properties</h1>
+    <p class="lead" style="margin-bottom:16px">Every triage lives in this browser, under its property label. Tick two to compare side-by-side.</p>
+    <p class="no-print" style="margin-bottom:16px"><button class="btn secondary" id="compare-btn" disabled>Compare selected</button></p>
+    <div id="history-list"></div>
+  </section>
+
+  <!-- ============ COMPARE ============ -->
+  <section class="view" id="view-compare" aria-label="Compare">
+    <h1>Which house?</h1>
+    <p class="lead" style="margin-bottom:16px">Pick any two saved properties for a side-by-side.</p>
+    <div class="card"><div class="grid2">
+      <div class="field"><label for="compare-a">Property A</label><select id="compare-a"></select></div>
+      <div class="field"><label for="compare-b">Property B</label><select id="compare-b"></select></div>
+    </div>
+    <p><button class="btn" id="compare-run-btn">Compare</button></p></div>
+    <div id="compare-content"></div>
+    <p><button class="btn secondary" data-nav="history">Back to history</button></p>
+  </section>
+
+  <!-- ============ NEGOTIATION SHEET (print) ============ -->
+  <section class="view" id="view-sheet" aria-label="Negotiation sheet">
+    <div id="sheet-content"></div>
+    <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="sheet-print-btn">Print / save PDF</button>
+      <button class="btn secondary" id="sheet-back-btn">Back to results</button>
+    </p>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section class="view" id="view-pricing" aria-label="Pricing">
+    <h1>Pricing</h1>
+    <p class="lead" style="margin-bottom:20px">One negotiated credit pays for years of Inspectly. AI compute runs on your own key &mdash; pennies per report.</p>
+    <div class="steps">
+      <div class="step plan-primary"><span class="plan-tag">Most popular</span><h3>Monthly</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$29<span style="font-size:.9rem;color:var(--muted-fg)">/mo</span></p><p>Unlimited reports, saved properties, side-by-side comparison, negotiation sheets. Cancel when the hunt ends.</p></div>
+      <div class="step"><h3>Single report</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$19<span style="font-size:.9rem;color:var(--muted-fg)"> one-time</span></p><p>One full triage, no saving, no export. For the buyer with exactly one report.</p></div>
+      <div class="step"><h3>Demo</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">Free</p><p>Triage the built-in sample report on your own key. Proves the bucket system before you pay.</p></div>
+    </div>
+    <div class="notice">Billing isn't wired in this MVP build &mdash; checkout arrives with launch. The app is fully usable now with your own key. No annual plan: house hunts are finite, and a yearly plan would be dishonest positioning.</div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section class="view" id="view-settings" aria-label="Settings">
+    <h1>Settings</h1>
+    <div class="card">
+      <h3>API key</h3>
+      <p id="key-status" style="color:var(--muted-fg);font-size:.92rem;margin-bottom:12px"></p>
+      <p><button class="btn secondary" data-nav="setup">Change key / provider</button></p>
+    </div>
+    <div class="card">
+      <h3>Your data</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem;margin-bottom:12px">Reports contain addresses. Everything is stored only in this browser.</p>
+      <p style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn secondary" id="export-json-btn">Export all data (JSON)</button>
+        <button class="btn danger-ghost" id="wipe-data-btn">Delete all local data</button>
+      </p>
+      <p class="success" id="settings-msg" role="status"></p>
+    </div>
+  </section>
+</main>
+
+<footer class="site no-print">
+  <p>Inspectly is an educational triage tool. Estimates are ranges, not quotes &mdash; not financial, legal, or contracting advice. Verify every finding with a licensed inspector or contractor. Your API key never leaves this browser. <a href="#/settings" data-nav="settings">Settings</a> &middot; <a href="#/pricing" data-nav="pricing">Pricing</a></p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
