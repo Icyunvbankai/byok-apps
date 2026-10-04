@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OutTheDoor — Know the real price before you sign</title>
+<meta name="description" content="BYOK car-deal analyzer. Your API key, your compute — true out-the-door price, fee flags, and lease-vs-buy math.">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header no-print">
+  <div class="header-inner">
+    <a class="logo" href="#/" data-nav="landing">OutThe<span>Door</span></a>
+    <nav class="nav" aria-label="Main">
+      <button data-nav="new">+ New deal</button>
+      <button data-nav="history">History</button>
+      <button data-nav="setup">API Key</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- ============ LANDING ============ -->
+  <section class="view" id="view-landing" aria-label="Welcome">
+    <div class="hero">
+      <span class="kicker">BYOK &middot; your key, your compute</span>
+      <h1>The dealer's worksheet, decoded.</h1>
+      <p class="lead">Enter the dealer's numbers, get the true out-the-door price computed in code — plus a fee flagger that calls out padded doc fees and junk add-ons, lease-vs-buy math, and a negotiation sheet to bring to the finance office.</p>
+      <p style="margin-top:8px">
+        <button class="btn" data-nav="new">Decode your first deal</button>
+        <button class="btn secondary" data-nav="setup" style="margin-left:8px">Set up API key</button>
+      </p>
+    </div>
+
+    <div class="steps">
+      <div class="step"><span class="n">1</span><h3>Enter the numbers</h3><p>MSRP, discount, rebates, doc fee, add-ons, trade-in, tax state. Plain-English tooltips for every line — "what's a doc fee?" included.</p></div>
+      <div class="step"><span class="n">2</span><h3>We do the math</h3><p>True OTD price, monthly payments across loan terms, lease-vs-buy over 3 and 5 years — all computed deterministically in code. The AI narrates; it never does your arithmetic.</p></div>
+      <div class="step"><span class="n">3</span><h3>Bring the sheet</h3><p>Flagged fees with target counter-numbers, a deal score, and a printable negotiation sheet. One caught $2,000 add-on pays for the tool 140 times over.</p></div>
+    </div>
+
+    <div class="sample-strip" aria-label="Sample output">
+      <div class="stat"><div class="v">$1,195</div><div class="l">doc fee flagged</div></div>
+      <div class="stat"><div class="v">$2,400</div><div class="l">junk add-ons caught</div></div>
+      <div class="stat"><div class="v">$38,412</div><div class="l">true OTD price</div></div>
+      <div class="stat"><div class="v">64</div><div class="l">deal score</div></div>
+    </div>
+
+    <div class="card">
+      <h3>The average buyer overpays by ~$1,800 in fees and add-ons</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem">Doc fees, VIN etching, nitrogen fills, paint "protection" — the finance office stacks margin where you're least likely to look. OutTheDoor checks every line against state norms and tells you exactly what to push back on.</p>
+    </div>
+
+    <div class="card">
+      <h3>How BYOK pricing works</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem">OutTheDoor runs on <strong style="color:var(--fg)">your</strong> OpenAI, xAI, or Anthropic key — pasted once, stored only in this browser, never on our servers. A full deal analysis costs roughly <strong style="color:var(--fg)">$0.01–0.04</strong> of your own API credit. We charge <strong style="color:var(--fg)">$14 once per deal</strong> for the analyzer — cheaper than the nitrogen in your tires.</p>
+      <p style="margin-top:12px"><button class="btn secondary" data-nav="pricing">See pricing</button></p>
+    </div>
+
+    <div class="card">
+      <h3>FAQ</h3>
+      <p style="font-size:.92rem;margin-bottom:10px"><strong>Do I need an API key?</strong><br><span style="color:var(--muted-fg)">Yes — it's why the app is $14 instead of $14/month. The key costs you pennies per deal (about a cent), and it never leaves your browser.</span></p>
+      <p style="font-size:.92rem;margin-bottom:10px"><strong>Does it work without a key?</strong><br><span style="color:var(--muted-fg)">Yes. All the math — OTD price, payments, fee flags, lease-vs-buy — runs in code with no key. The key only powers the AI-written negotiation analysis.</span></p>
+      <p style="font-size:.92rem"><strong>Is my deal data uploaded anywhere?</strong><br><span style="color:var(--muted-fg)">No. Deals live in this browser's localStorage. Export or delete them anytime in API Key settings.</span></p>
+    </div>
+  </section>
+
+  <!-- ============ SETUP ============ -->
+  <section class="view" id="view-setup" aria-label="API key setup">
+    <h1>Bring your own key</h1>
+    <p class="lead" style="margin-bottom:20px">Pick a provider, paste a key. It stays in this browser's local storage — it is never sent to our servers. Every AI call goes straight from your browser to the provider.</p>
+
+    <div class="notice">New to API keys? <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">OpenAI keys</a> &middot; <a href="https://console.x.ai" target="_blank" rel="noopener">xAI console</a> &middot; <a href="https://console.anthropic.com" target="_blank" rel="noopener">Anthropic console</a>. Set a small spend limit (e.g. $5) on your provider account.</div>
+    <div class="notice warn" id="anthropic-note" hidden>Heads up: Anthropic's API sometimes blocks direct browser calls (CORS). If the key test fails below, OpenAI or xAI will work fine — or run Anthropic through a tiny proxy.</div>
+
+    <div class="card">
+      <div class="provider-cards" role="radiogroup" aria-label="Provider">
+        <label class="provider" data-provider="openai">
+          <input type="radio" name="provider" value="openai" checked>
+          <strong>OpenAI</strong><small>gpt-4o-mini default &middot; ~$0.01/deal</small>
+        </label>
+        <label class="provider" data-provider="xai">
+          <input type="radio" name="provider" value="xai">
+          <strong>xAI</strong><small>grok-3-mini default &middot; ~$0.01/deal</small>
+        </label>
+        <label class="provider" data-provider="anthropic">
+          <input type="radio" name="provider" value="anthropic">
+          <strong>Anthropic</strong><small>haiku default &middot; ~$0.02/deal</small>
+        </label>
+      </div>
+
+      <div class="field">
+        <label for="api-key">API key</label>
+        <input type="password" id="api-key" placeholder="sk-..." autocomplete="off" spellcheck="false">
+        <p class="tip">Stored only in this browser (localStorage). Clear it anytime below.</p>
+      </div>
+
+      <div class="field">
+        <label for="model">Model <span class="hint">(editable — use what you like)</span></label>
+        <input type="text" id="model" value="gpt-4o-mini" spellcheck="false">
+        <p class="tip" id="model-hint">Mini-class models are plenty for deal verdicts and cost fractions of a cent per analysis.</p>
+      </div>
+
+      <p>
+        <button class="btn" id="test-key-btn">Test key</button>
+        <button class="btn secondary" id="save-key-btn" style="margin-left:8px">Save key</button>
+      </p>
+      <p class="error" id="key-error" role="alert"></p>
+      <p class="success" id="key-success" role="status"></p>
+
+      <p style="margin-top:16px"><button class="btn danger-ghost" id="clear-key-btn">Remove saved key</button></p>
+    </div>
+
+    <div class="card">
+      <h3>Settings</h3>
+      <p style="color:var(--muted-fg);font-size:.92rem;margin-bottom:12px">Est. key spend this browser: <strong style="color:var(--fg)" id="spend-counter">$0.00</strong> <span class="hint">(≈$0.02 per AI verdict)</span></p>
+      <p style="color:var(--muted-fg);font-size:.92rem;margin-bottom:12px">Fee-norms table: <strong style="color:var(--fg)">v1.0</strong> — typical doc-fee ranges and title/reg estimates for 10 states. Ranges are estimates, not legal data; verify caps with your state's dealer board.</p>
+      <p style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn secondary" id="export-btn">Export deals (JSON)</button>
+        <button class="btn secondary" id="import-btn">Import deals (JSON)</button>
+        <input type="file" id="import-file" accept="application/json" hidden>
+      </p>
+      <p class="error" id="settings-error" role="alert"></p>
+      <p class="success" id="settings-success" role="status"></p>
+    </div>
+  </section>
+
+  <!-- ============ NEW DEAL ============ -->
+  <section class="view" id="view-new" aria-label="New deal">
+    <h1>New deal</h1>
+    <p class="lead" style="margin-bottom:20px">Enter the dealer's numbers straight off the worksheet. Tooltips explain every line.</p>
+
+    <div class="notice warn" id="no-key-notice" hidden>You haven't saved an API key yet — all the math still runs, but the AI negotiation analysis needs one. <a href="#/setup" data-nav="setup">Set it up</a> (30 seconds).</div>
+
+    <form id="deal-form" novalidate>
+      <div class="card">
+        <h3>Vehicle</h3>
+        <div class="grid2">
+          <div class="field"><label for="f-year">Year</label><input id="f-year" type="number" min="1990" max="2030" placeholder="2025"></div>
+          <div class="field"><label for="f-make">Make</label><input id="f-make" placeholder="Toyota"></div>
+          <div class="field"><label for="f-model">Model</label><input id="f-model" placeholder="RAV4"></div>
+          <div class="field"><label for="f-trim">Trim <span class="hint">(optional)</span></label><input id="f-trim" placeholder="XLE AWD"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Price</h3>
+        <div class="grid2">
+          <div class="field"><label for="f-msrp">MSRP ($) <span class="hint">— sticker price</span></label><input id="f-msrp" type="number" min="1" required placeholder="35000"></div>
+          <div class="field"><label for="f-discount">Dealer discount ($) <span class="hint">— off MSRP</span></label><input id="f-discount" type="number" min="0" value="0" placeholder="2500"></div>
+          <div class="field"><label for="f-rebates">Rebates / incentives ($) <span class="hint">— factory cash, loyalty</span></label><input id="f-rebates" type="number" min="0" value="0" placeholder="1000"><p class="tip">Rebates cut what you finance, not the taxable price (most states tax them).</p></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>State &amp; tax</h3>
+        <div class="grid2">
+          <div class="field"><label for="f-state">State</label><select id="f-state"></select><p class="tip">Tax rate auto-fills — override it if your county differs.</p></div>
+          <div class="field"><label for="f-zip">ZIP <span class="hint">(optional, for your records)</span></label><input id="f-zip" inputmode="numeric" placeholder="34982"></div>
+          <div class="field"><label for="f-taxrate">Sales tax rate (%)</label><input id="f-taxrate" type="number" min="0" max="15" step="0.01" value="6"><p class="tip" id="taxrate-hint"></p></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Fees &amp; add-ons</h3>
+        <div class="grid2">
+          <div class="field"><label for="f-docfee">Doc fee ($) <span class="hint">— "documentation" / dealer fee</span></label><input id="f-docfee" type="number" min="0" value="0" placeholder="899"><p class="tip" id="docfee-hint"></p></div>
+          <div class="field"><label for="f-titlereg">Title &amp; registration ($) <span class="hint">— state estimate, editable</span></label><input id="f-titlereg" type="number" min="0" value="0"><p class="tip" id="titlereg-hint"></p></div>
+        </div>
+        <h3 style="margin-top:8px">Dealer add-ons <span class="hint" style="font-weight:400;font-size:.8rem">— itemize each (VIN etch, nitrogen, paint protection…)</span></h3>
+        <div id="addon-rows"></div>
+        <p><button type="button" class="btn secondary" id="addon-add-btn" style="min-height:44px">+ Add add-on</button></p>
+      </div>
+
+      <div class="card">
+        <h3>Trade-in &amp; down payment</h3>
+        <div class="grid2">
+          <div class="field"><label for="f-tradevalue">Trade-in value ($)</label><input id="f-tradevalue" type="number" min="0" value="0" placeholder="8000"></div>
+          <div class="field"><label for="f-tradeoff">Trade payoff ($) <span class="hint">— remaining loan, if any</span></label><input id="f-tradeoff" type="number" min="0" value="0" placeholder="5000"></div>
+          <div class="field"><label for="f-down">Down payment ($) <span class="hint">— cash down</span></label><input id="f-down" type="number" min="0" value="0" placeholder="2000"></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Financing</h3>
+        <div class="grid2">
+          <div class="field"><label for="f-apr">APR (%, annual)</label><input id="f-apr" type="number" min="0" max="30" step="0.1" value="7"><p class="tip">Get pre-approved at your bank first — then make the dealer beat it.</p></div>
+          <div class="field"><label for="f-term">Loan term <span class="hint">(headline payment)</span></label><select id="f-term"><option value="36">36 mo</option><option value="48">48 mo</option><option value="60" selected>60 mo</option><option value="72">72 mo</option></select></div>
+        </div>
+      </div>
+
+      <details class="assume">
+        <summary>Lease terms <span style="color:var(--muted-fg);font-weight:400">(optional — fills the lease-vs-buy tab)</span></summary>
+        <div class="body">
+          <div class="grid2">
+            <div class="field"><label for="f-mf">Money factor <span class="hint">— e.g. 0.00150 (≈3.6% APR)</span></label><input id="f-mf" type="number" min="0" max="0.01" step="0.00001" placeholder="0.00150"></div>
+            <div class="field"><label for="f-residual">Residual (% of MSRP)</label><input id="f-residual" type="number" min="0" max="100" step="1" placeholder="60"></div>
+            <div class="field"><label for="f-leaseterm">Lease term (months)</label><input id="f-leaseterm" type="number" min="12" max="60" value="36"></div>
+            <div class="field"><label for="f-mileage">Miles / year</label><input id="f-mileage" type="number" min="0" value="12000"></div>
+            <div class="field"><label for="f-disposition">Disposition fee ($)</label><input id="f-disposition" type="number" min="0" value="395"></div>
+            <div class="field"><label for="f-driveoff">Drive-off ($) <span class="hint">— due at signing</span></label><input id="f-driveoff" type="number" min="0" value="0"></div>
+          </div>
+        </div>
+      </details>
+
+      <details class="assume">
+        <summary>Market comps <span style="font-size:.9rem;color:var(--accent);font-weight:700" id="comp-count"></span> <span style="color:var(--muted-fg);font-weight:400">(optional — other dealers' OTD quotes sharpen the score)</span></summary>
+        <div class="body" id="comp-rows"></div>
+        <p><button type="button" class="btn secondary" id="comp-add-btn" style="min-height:44px">+ Add comp</button></p>
+      </details>
+
+      <p><button type="submit" class="btn block" id="analyze-btn">Decode this deal</button></p>
+      <p class="error" id="form-error" role="alert"></p>
+    </form>
+  </section>
+
+  <!-- ============ RESULTS (OTD + FEES) ============ -->
+  <section class="view" id="view-results" aria-label="Results">
+    <div id="results-content"></div>
+    <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" data-nav="lease">Lease vs buy</button>
+      <button class="btn" data-nav="score">Deal score</button>
+      <button class="btn secondary" data-nav="new">New deal</button>
+      <button class="btn secondary" data-nav="history">History</button>
+    </p>
+  </section>
+
+  <!-- ============ LEASE VS BUY ============ -->
+  <section class="view" id="view-lease" aria-label="Lease versus buy">
+    <div id="lease-content"></div>
+    <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn secondary" data-nav="results">Back to breakdown</button>
+      <button class="btn" data-nav="score">Deal score</button>
+    </p>
+  </section>
+
+  <!-- ============ SCORE ============ -->
+  <section class="view" id="view-score" aria-label="Deal score">
+    <div id="score-content"></div>
+    <p class="no-print" style="margin-top:16px;display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn" id="sheet-btn">Negotiation sheet (print)</button>
+      <button class="btn secondary" data-nav="results">Breakdown</button>
+      <button class="btn secondary" data-nav="lease">Lease vs buy</button>
+    </p>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section class="view" id="view-history" aria-label="History">
+    <h1>Saved deals</h1>
+    <p class="lead" style="margin-bottom:16px">Everything lives in this browser. Tick up to 3 to compare dealer quotes side-by-side.</p>
+    <p class="no-print" style="margin-bottom:16px"><button class="btn secondary" id="compare-btn" disabled>Compare selected</button></p>
+    <div id="history-list"></div>
+  </section>
+
+  <!-- ============ COMPARE ============ -->
+  <section class="view" id="view-compare" aria-label="Compare">
+    <h1>Side-by-side</h1>
+    <div class="compare-table-wrap card"><div id="compare-content"></div></div>
+    <p><button class="btn secondary" data-nav="history">Back to history</button></p>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section class="view" id="view-pricing" aria-label="Pricing">
+    <h1>Pricing</h1>
+    <p class="lead" style="margin-bottom:20px">One caught junk fee pays for this hundreds of times over. AI compute runs on your own key — pennies per deal.</p>
+    <div class="steps">
+      <div class="step"><h3>Single deal</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$14<span style="font-size:.9rem;color:var(--muted-fg)"> one-time</span></p><p>Full decode of one car deal: OTD math, fee flags, lease-vs-buy, deal score, negotiation sheet.</p></div>
+      <div class="step"><h3>3-pack</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">$29<span style="font-size:.9rem;color:var(--muted-fg)"> one-time</span></p><p>For shoppers collecting multiple quotes. Compare view included.</p></div>
+      <div class="step"><h3>Your key</h3><p style="font-size:1.6rem;font-weight:700;color:var(--fg)">~$0.02<span style="font-size:.9rem;color:var(--muted-fg)">/deal</span></p><p>AI verdicts billed to your own API key. We never see it.</p></div>
+    </div>
+    <div class="notice">Billing isn't wired in this MVP build — checkout arrives with launch. The app is fully usable now with your own key.</div>
+  </section>
+</main>
+
+<footer class="site no-print">
+  <p>OutTheDoor is an educational deal-analysis tool. Estimates only — not financial, investment, or tax advice. Fee norms are typical ranges, not legal caps. Verify every number against your buyer's order. Your API key never leaves this browser.</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>
